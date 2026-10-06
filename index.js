@@ -5,6 +5,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
   EmbedBuilder,
   SlashCommandBuilder,
   REST,
@@ -341,6 +342,83 @@ function findFlow(input) {
 }
 
 /* =========================
+   SKILLS (5+ PER CHARACTER)
+========================= */
+
+/*
+  Extra skills added on top of each character's original ones.
+  "NEL" versions automatically get the same extras as the normal one.
+*/
+const EXTRA_SKILLS = {
+  "yoichi isagi": ["Chemical Reaction", "Ego Awakening", "Goal Instinct"],
+  "michael kaiser": ["Kaiser Impact Rush", "Royal Dribble", "Emperor's Command"],
+  "noel noa": ["Absolute Control", "Long Range Strike", "Total Football"],
+  "alexis ness": ["Through Ball", "Kaiser's Shadow", "Precision Cross"],
+  "rensuke kunigami": ["Heavy Shot", "Wild Charge", "Hero's Volley"],
+  "meguru bachira": ["Monster Dribble", "Monster Shot", "Wild Feint"],
+  "lavinho": ["Samba Step", "Rainbow Flick", "Nutmeg Magic"],
+  "seishiro nagi": ["Heel Trap", "Lazy Volley", "Genius Touch"],
+  "reo mikage": ["Mirror Play", "Pass Copy", "Supporting Run"],
+  "hyoma chigiri": ["Sprint Burst", "Overlap Run", "Speed Cross"],
+  "shoei barou": ["Territory Shot", "Ego Blast", "Alpha Press"],
+  "oliver aiku": ["Last Man Tackle", "Slide Block", "Header Clear"],
+  "don lorenzo": ["Shadow Mark", "Hard Tackle", "Wall Defense"],
+  "marc snuffy": ["Perfect Timing", "Quick Finish", "Space Control"],
+  "rin itoshi": ["Ice Dribble", "Perfect Cross", "Cold Finish"],
+  "ryusei shidou": ["Wild Dragon", "Instinct Dribble", "Dragon Header"],
+  "charles chevalier": ["Royal Pass", "Counter Pass", "Swift Lob"],
+  "julian loki": ["Blitz Dash", "Thunder Strike", "Trick Step"],
+  "kenyu yukimiya": ["Snow Drive", "Wing Run", "Back Post Header"],
+  "tabito karasu": ["Quick Turn", "Dummy Pass", "Press Resist"],
+  "eita otoya": ["Hidden Run", "Cut Back", "Sneak Shot"],
+  "ikki niko": ["Zone Cover", "Block Shot", "Clean Tackle"],
+  "gin gagamaru": ["Diving Save", "Penalty Stop", "Goal Kick Pass"],
+  "yo hiori": ["Curved Pass", "Midfield Control", "Set Piece Genius"],
+  "jyubei aryu": ["Tall Wall", "Header Clear", "Air Duel"],
+  "zantetsu tsurugi": ["Rush Dribble", "Power Cross", "Flash Step"],
+  "agi": ["Body Shield", "Long Shot", "Close Control"]
+};
+
+// Safety net so every character always ends up with 5+ skills.
+const POSITION_SKILLS = {
+  ST: ["Clinical Finish", "Poacher Instinct", "Far Post Strike", "Power Header", "Quick Shot"],
+  LW: ["Wing Run", "Cut Inside", "Speed Dribble", "Curved Shot", "Cross"],
+  RW: ["Wing Run", "Cut Inside", "Speed Dribble", "Curved Shot", "Cross"],
+  CM: ["Through Pass", "Midfield Control", "Long Pass", "Press Resist", "Set Piece"],
+  CB: ["Hard Tackle", "Aerial Duel", "Interception", "Block Shot", "Clear Ball"],
+  GK: ["Diving Save", "Reflex Save", "Penalty Stop", "Goal Kick Pass", "Sweeper Rush"]
+};
+
+function buildFullSkills() {
+  for (const c of Object.values(characters)) {
+    let baseName = normalize(c.name);
+
+    if (baseName.endsWith(" nel")) {
+      const base = findCharacter(baseName.replace(/ nel$/, ""), false);
+
+      if (base && !normalize(base.name).endsWith(" nel")) {
+        baseName = normalize(base.name);
+      }
+    }
+
+    const merged = [
+      ...new Set([...c.skills, ...(EXTRA_SKILLS[baseName] || [])])
+    ];
+
+    const pool = POSITION_SKILLS[c.position] || POSITION_SKILLS.ST;
+
+    for (const s of pool) {
+      if (merged.length >= 5) break;
+      if (!merged.includes(s)) merged.push(s);
+    }
+
+    c.skills = merged;
+  }
+}
+
+buildFullSkills();
+
+/* =========================
    INFO EMBEDS
 ========================= */
 
@@ -461,10 +539,182 @@ function addXP(p, amount) {
 }
 
 /* =========================
-   MATCH SYSTEM — UPDATED
+   MATCH SYSTEM
 ========================= */
 
 const matches = new Map();
+
+/* ---------- Flow skills ---------- */
+
+// Extra things ONLY the owner can pick in the skill menu.
+const OWNER_SKILLS = [
+  { name: "Instant Goal (Owner)", type: "shoot" },
+  { name: "Perfect Assist (Owner)", type: "pass" },
+  { name: "Unstoppable Dribble (Owner)", type: "dribble" },
+  { name: "Total Defense (Owner)", type: "defend" }
+];
+
+const SKILL_TYPE_LABELS = {
+  shoot: "🎯 Shot — can score a goal",
+  pass: "🧠 Pass — can create an assist",
+  dribble: "🌀 Dribble — beats defenders",
+  defend: "🛡️ Defend — blocks the next opponent goal"
+};
+
+const SKILL_TYPE_OVERRIDES = {
+  "meta vision": "shoot",
+  "master vision": "shoot",
+  "emperor's eye": "shoot"
+};
+
+const POSITION_DEFAULT_TYPE = {
+  ST: "shoot",
+  LW: "dribble",
+  RW: "dribble",
+  CM: "pass",
+  CB: "defend",
+  GK: "defend"
+};
+
+function skillType(name, position) {
+  const n = normalize(name);
+
+  if (SKILL_TYPE_OVERRIDES[n]) return SKILL_TYPE_OVERRIDES[n];
+
+  if (/(mark|eater|defen|intercept|aerial|height|reach|save|reflex|tackle|wall|block|guard|lock|clear|duel|shield|cover)/.test(n)) {
+    return "defend";
+  }
+
+  if (/(shot|impact|volley|revolver|snipe|finish|drive|strike|magnus|destroyer|shoot|lightning|header|gun|blast|punch)/.test(n)) {
+    return "shoot";
+  }
+
+  if (/(dribble|elastico|trap|speed|sprint|run|acceleration|feint|ball keeping|dance|magician|monster|cut inside|1v1|stealth|chameleon|solo|control|trick|off ball|panther|step|flick|nutmeg|dash|turn|rush|charge)/.test(n)) {
+    return "dribble";
+  }
+
+  if (/(pass|assist|thread|vision|creative|analyst|tactic|cross|lob|through)/.test(n)) {
+    return "pass";
+  }
+
+  return POSITION_DEFAULT_TYPE[position] || "shoot";
+}
+
+// The skills this player can pick from in Flow State.
+function getFlowSkills(userId) {
+  const p = getPlayer(userId);
+
+  const c = p.activePlayer ? findCharacter(p.activePlayer) : null;
+
+  let names = [];
+  let position = p.position;
+
+  if (c) {
+    names = [...c.skills];
+    position = c.position;
+  } else if (p.activeFlow) {
+    const f = findFlow(p.activeFlow);
+    if (f) names = [...f.abilities];
+  }
+
+  const list = names.map(n => ({
+    name: n,
+    type: skillType(n, position)
+  }));
+
+  if (userId === OWNER_ID) list.push(...OWNER_SKILLS);
+
+  return list.slice(0, 25);
+}
+
+function skillMenu(userId) {
+  const options = getFlowSkills(userId).map(s => ({
+    label: s.name.slice(0, 100),
+    value: s.name.slice(0, 100),
+    description: SKILL_TYPE_LABELS[s.type].slice(0, 100)
+  }));
+
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`flowskill_${userId}`)
+      .setPlaceholder("Choose a skill to use")
+      .addOptions(options)
+  );
+}
+
+function skillMenuText(m, userId) {
+  return (
+    `🔥 **FLOW STATE**\n` +
+    `Choose a skill below. Only you can see this.\n` +
+    `⚡ Actions left: **${userId === OWNER_ID ? "∞" : m.flowLeft}**`
+  );
+}
+
+// Does the skill work? Returns the text to show.
+function performSkill(m, p, owner, skill) {
+  const chance = Math.min(0.95, m.rating / 120 + 0.3);
+  const success = owner || Math.random() < chance;
+  const title = `✨ **${skill.name}**\n`;
+
+  if (skill.type === "shoot") {
+    if (success) {
+      m.score++;
+      m.stats.goals++;
+      m.stats.shotsOnTarget++;
+      m.bestMoment = true;
+      m.worstMoment = false;
+      addXP(p, 45);
+      return title + "⚽ **GOAL!**";
+    }
+
+    m.stats.missedChances++;
+    return title + "❌ The keeper got a hand to it.";
+  }
+
+  if (skill.type === "pass") {
+    if (success) {
+      m.stats.keyPasses++;
+
+      if (owner || Math.random() < 0.6) {
+        m.stats.assists++;
+        m.bestMoment = true;
+        m.worstMoment = false;
+        return title + "🎯 **ASSIST!** Perfect pass.";
+      }
+
+      return title + "✅ Key pass created.";
+    }
+
+    m.stats.badPasses++;
+    return title + "❌ The pass was cut out.";
+  }
+
+  if (skill.type === "dribble") {
+    if (success) {
+      m.stats.dribbles++;
+      m.bestMoment = true;
+      m.worstMoment = false;
+      return title + "🌀 You beat the defender!";
+    }
+
+    m.stats.turnovers++;
+    return title + "❌ You lost the ball.";
+  }
+
+  // defend
+  if (success) {
+    if (Math.random() < 0.5) m.stats.tackles++;
+    else m.stats.interceptions++;
+
+    m.shield = true;
+    return title + "🛡️ Great defending! The next opponent goal is blocked.";
+  }
+
+  m.stats.turnovers++;
+  return title + "❌ You were beaten.";
+}
+
+/* ---------- Match ---------- */
 
 function createMatch(userId) {
   const p = getPlayer(userId);
@@ -484,8 +734,11 @@ function createMatch(userId) {
     bestMoment: false,
     worstMoment: false,
     flowActive: false,
+    flowLeft: 0,
     flowUsed: false,
+    shield: false,
     finished: false,
+    message: null,
 
     stats: {
       goals: 0,
@@ -549,6 +802,8 @@ function matchEmbed(userId) {
   const m = matches.get(userId);
   const p = getPlayer(userId);
 
+  const owner = userId === OWNER_ID;
+
   const result =
     m.score > m.opponentScore
       ? "win"
@@ -564,21 +819,33 @@ function matchEmbed(userId) {
 
   let chanceText;
 
-  if (userId === OWNER_ID) {
+  if (owner) {
     chanceText = "🔥 **CHANCE AVAILABLE**";
   } else if (m.hasChance) {
     chanceText = "⚡ **CHANCE AVAILABLE**";
   } else {
-    chanceText = "⏳ **No chance right now**";
+    chanceText = "⏳ **No chance right now** — press **Continue**";
   }
 
   const flowAllowed =
-    userId === OWNER_ID ||
+    owner ||
+    m.flowActive ||
     m.bestMoment ||
     m.worstMoment;
 
+  let flowText;
+
+  if (m.flowActive) {
+    flowText = `🔥 **FLOW STATE** (${owner ? "∞" : m.flowLeft} left)`;
+  } else if (p.activeFlow) {
+    flowText = `${p.activeFlow}${flowAllowed ? " 🟢" : " 🔒"}`;
+  } else {
+    flowText = owner ? "👑 Owner" : "None";
+  }
+
   return new EmbedBuilder()
-    .setTitle("⚽ BLUE LOCK MATCH")
+    .setColor(m.flowActive ? 0xff6a00 : 0x2b6cb0)
+    .setTitle(m.flowActive ? "🔥 BLUE LOCK MATCH — FLOW STATE" : "⚽ BLUE LOCK MATCH")
     .setDescription(
       `### ${m.score} - ${m.opponentScore}\n\n` +
       `⏱️ **${m.minute}'**\n` +
@@ -586,43 +853,13 @@ function matchEmbed(userId) {
       `${chanceText}`
     )
     .addFields(
-      {
-        name: "Goals",
-        value: `${m.stats.goals}`,
-        inline: true
-      },
-      {
-        name: "Assists",
-        value: `${m.stats.assists}`,
-        inline: true
-      },
-      {
-        name: "Dribbles",
-        value: `${m.stats.dribbles}`,
-        inline: true
-      },
-      {
-        name: "Key Passes",
-        value: `${m.stats.keyPasses}`,
-        inline: true
-      },
-      {
-        name: "Best Moment",
-        value: m.bestMoment ? "🔥 ACTIVE" : "—",
-        inline: true
-      },
-      {
-        name: "Worst Moment",
-        value: m.worstMoment ? "💀 ACTIVE" : "—",
-        inline: true
-      },
-      {
-        name: "Flow",
-        value: p.activeFlow
-          ? `${p.activeFlow}${flowAllowed ? " 🟢" : " 🔒"}`
-          : "None",
-        inline: true
-      }
+      { name: "Goals", value: `${m.stats.goals}`, inline: true },
+      { name: "Assists", value: `${m.stats.assists}`, inline: true },
+      { name: "Dribbles", value: `${m.stats.dribbles}`, inline: true },
+      { name: "Key Passes", value: `${m.stats.keyPasses}`, inline: true },
+      { name: "Best Moment", value: m.bestMoment ? "🔥 ACTIVE" : "—", inline: true },
+      { name: "Worst Moment", value: m.worstMoment ? "💀 ACTIVE" : "—", inline: true },
+      { name: "Flow", value: flowText, inline: true }
     );
 }
 
@@ -639,6 +876,7 @@ function matchButtons(userId) {
 
   const flowAllowed =
     owner ||
+    m.flowActive ||
     m.bestMoment ||
     m.worstMoment;
 
@@ -671,9 +909,16 @@ function matchButtons(userId) {
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(
           !chance ||
-          !p.activeFlow ||
+          (!owner && !p.activeFlow) ||
           !flowAllowed
-        )
+        ),
+
+      // Moves the match forward when you have no chance.
+      new ButtonBuilder()
+        .setCustomId(`match_continue_${userId}`)
+        .setLabel("⏭️ Continue")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(chance)
     )
   ];
 }
@@ -700,7 +945,7 @@ function advanceMatch(m) {
   }
 
   /*
-    Owner always has a chance.
+    Owner always has a chance and is immune.
   */
 
   if (m.userId === OWNER_ID) {
@@ -716,12 +961,91 @@ function advanceMatch(m) {
   m.hasChance = Math.random() < 0.35;
 
   /*
-    Random opponent goal.
+    Random opponent goal (a defend skill can block one).
   */
 
   if (Math.random() < 0.12) {
-    m.opponentScore++;
+    if (m.shield) {
+      m.shield = false;
+    } else {
+      m.opponentScore++;
+    }
   }
+}
+
+
+/* =========================
+   FINISH MATCH
+========================= */
+
+function finishMatch(userId) {
+  const m = matches.get(userId);
+  const p = getPlayer(userId);
+
+  m.finished = true;
+
+  const result =
+    m.score > m.opponentScore
+      ? "win"
+      : m.score < m.opponentScore
+      ? "loss"
+      : "draw";
+
+  const finalRating =
+    calculateRating(
+      m.stats,
+      result,
+      m.position
+    );
+
+  p.stats.matches++;
+  p.stats.goals += m.stats.goals;
+  p.stats.assists += m.stats.assists;
+
+  if (result === "win") {
+    p.stats.wins++;
+    p.coins += 5000;
+  }
+
+  if (result === "loss") {
+    p.stats.losses++;
+  }
+
+  if (result === "draw") {
+    p.stats.draws++;
+    p.coins += 2000;
+  }
+
+  if (finalRating > p.stats.bestRating) {
+    p.stats.bestRating = finalRating;
+  }
+
+  if (finalRating >= 8.5) {
+    p.stats.motm++;
+    addXP(p, 75);
+  } else {
+    addXP(p, 30);
+  }
+
+  save();
+
+  matches.delete(userId);
+
+  return new EmbedBuilder()
+    .setTitle("🏁 MATCH FINISHED")
+    .setDescription(
+      `## ${m.score} - ${m.opponentScore}\n\n` +
+      `⏱️ **90'**\n` +
+      `⭐ Final Rating: **${finalRating}**\n` +
+      `🏆 Result: **${result.toUpperCase()}**`
+    )
+    .addFields(
+      { name: "⚽ Goals", value: `${m.stats.goals}`, inline: true },
+      { name: "🎯 Assists", value: `${m.stats.assists}`, inline: true },
+      { name: "🔥 Dribbles", value: `${m.stats.dribbles}`, inline: true },
+      { name: "🧠 Key Passes", value: `${m.stats.keyPasses}`, inline: true },
+      { name: "📈 Best Rating", value: `${p.stats.bestRating}`, inline: true }
+    );
 }
 
 
@@ -745,32 +1069,67 @@ async function processAction(interaction, action) {
 
   const owner = userId === OWNER_ID;
 
+  // Remember the match message so the skill menu can update it.
+  m.message = interaction.message;
+
   /*
     OWNER IS IMMUNE:
     - Always has a chance
     - Actions always succeed
     - No negative events
-    - Flow anytime
+    - Flow anytime, unlimited
   */
+
+
+  /* =========================
+     CONTINUE (no chance right now)
+  ========================= */
+
+  if (action === "continue") {
+
+    if (owner || m.hasChance) {
+      return interaction.reply({
+        content: "⚡ You already have a chance!",
+        ephemeral: true
+      });
+    }
+
+    do {
+      advanceMatch(m);
+    } while (!m.hasChance && m.minute < 90);
+
+    if (m.minute >= 90) {
+      return interaction.update({
+        embeds: [finishMatch(userId)],
+        components: []
+      });
+    }
+
+    return interaction.update({
+      embeds: [matchEmbed(userId)],
+      components: matchButtons(userId)
+    });
+  }
 
   if (!owner && !m.hasChance) {
     return interaction.reply({
       content:
         `⏳ You don't have a chance at **${m.minute}'**.\n` +
-        `Wait for another match event.`,
+        `Press **Continue** to wait for another match event.`,
       ephemeral: true
     });
   }
 
 
   /* =========================
-     FLOW
+     FLOW  ->  opens the skill menu
   ========================= */
 
   if (action === "flow") {
 
     const flowAllowed =
       owner ||
+      m.flowActive ||
       m.bestMoment ||
       m.worstMoment;
 
@@ -782,34 +1141,52 @@ async function processAction(interaction, action) {
       });
     }
 
-    if (!p.activeFlow) {
+    if (!owner && !p.activeFlow) {
       return interaction.reply({
-        content: "❌ You don't have an active Flow.",
+        content: "❌ You don't have an active Flow. Use `,setflow <flow>`.",
+        ephemeral: true
+      });
+    }
+
+    if (getFlowSkills(userId).length === 0) {
+      return interaction.reply({
+        content:
+          "❌ You don't have any skills yet. Get a character with `,roll` and select it with `,setplayer <name>`.",
+        ephemeral: true
+      });
+    }
+
+    // Flow State is already running: just open the menu again.
+    if (m.flowActive) {
+      return interaction.reply({
+        content: skillMenuText(m, userId),
+        components: [skillMenu(userId)],
         ephemeral: true
       });
     }
 
     if (!owner && m.flowUsed) {
       return interaction.reply({
-        content: "⏳ You've already activated Flow this match.",
+        content: "⏳ You've already used Flow this match.",
         ephemeral: true
       });
     }
 
+    // Start Flow State.
     m.flowUsed = true;
     m.flowActive = true;
+    m.flowLeft = owner ? Infinity : 3;
+    p.flowCooldown = owner ? 0 : 180;
 
-    if (owner) {
-      p.flowCooldown = 0;
-    } else {
-      p.flowCooldown = 180;
-    }
-
-    return interaction.update({
-      embeds: [
-        matchEmbed(userId)
-      ],
+    await interaction.update({
+      embeds: [matchEmbed(userId)],
       components: matchButtons(userId)
+    });
+
+    return interaction.followUp({
+      content: skillMenuText(m, userId),
+      components: [skillMenu(userId)],
+      ephemeral: true
     });
   }
 
@@ -828,7 +1205,7 @@ async function processAction(interaction, action) {
       m.rating / 120;
 
     /*
-      Flow gives a temporary boost.
+      Flow State gives a boost.
     */
 
     if (m.flowActive) {
@@ -854,10 +1231,6 @@ async function processAction(interaction, action) {
       m.stats.goals++;
       m.stats.shotsOnTarget++;
 
-      /*
-        Scoring creates a Best Moment.
-      */
-
       m.bestMoment = true;
       m.worstMoment = false;
 
@@ -866,10 +1239,6 @@ async function processAction(interaction, action) {
     } else {
 
       m.stats.missedChances++;
-
-      /*
-        Missing can create a Worst Moment.
-      */
 
       if (Math.random() < 0.45) {
         m.worstMoment = true;
@@ -936,6 +1305,14 @@ async function processAction(interaction, action) {
   }
 
 
+  // Every action uses up one Flow State action.
+  if (m.flowActive && !owner) {
+    m.flowLeft--;
+
+    if (m.flowLeft <= 0) m.flowActive = false;
+  }
+
+
   /*
     After the player's action, time moves forward.
   */
@@ -943,99 +1320,9 @@ async function processAction(interaction, action) {
   advanceMatch(m);
 
 
-  /* =========================
-     MATCH FINISHED
-  ========================= */
-
   if (m.minute >= 90) {
-
-    m.finished = true;
-
-    const result =
-      m.score > m.opponentScore
-        ? "win"
-        : m.score < m.opponentScore
-        ? "loss"
-        : "draw";
-
-    const finalRating =
-      calculateRating(
-        m.stats,
-        result,
-        m.position
-      );
-
-    p.stats.matches++;
-    p.stats.goals += m.stats.goals;
-    p.stats.assists += m.stats.assists;
-
-    if (result === "win") {
-      p.stats.wins++;
-      p.coins += 5000;
-    }
-
-    if (result === "loss") {
-      p.stats.losses++;
-    }
-
-    if (result === "draw") {
-      p.stats.draws++;
-      p.coins += 2000;
-    }
-
-    if (finalRating > p.stats.bestRating) {
-      p.stats.bestRating = finalRating;
-    }
-
-    if (finalRating >= 8.5) {
-      p.stats.motm++;
-      addXP(p, 75);
-    } else {
-      addXP(p, 30);
-    }
-
-    save();
-
-    matches.delete(userId);
-
     return interaction.update({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("🏁 MATCH FINISHED")
-          .setDescription(
-            `## ${m.score} - ${m.opponentScore}\n\n` +
-            `⏱️ **90'**\n` +
-            `⭐ Final Rating: **${finalRating}**\n` +
-            `🏆 Result: **${result.toUpperCase()}**`
-          )
-          .addFields(
-            {
-              name: "⚽ Goals",
-              value: `${m.stats.goals}`,
-              inline: true
-            },
-            {
-              name: "🎯 Assists",
-              value: `${m.stats.assists}`,
-              inline: true
-            },
-            {
-              name: "🔥 Dribbles",
-              value: `${m.stats.dribbles}`,
-              inline: true
-            },
-            {
-              name: "🧠 Key Passes",
-              value: `${m.stats.keyPasses}`,
-              inline: true
-            },
-            {
-              name: "📈 Best Rating",
-              value: `${p.stats.bestRating}`,
-              inline: true
-            }
-          )
-      ],
+      embeds: [finishMatch(userId)],
       components: []
     });
   }
@@ -1046,12 +1333,126 @@ async function processAction(interaction, action) {
   */
 
   await interaction.update({
-    embeds: [
-      matchEmbed(userId)
-    ],
+    embeds: [matchEmbed(userId)],
     components: matchButtons(userId)
   });
 }
+
+
+/* =========================
+   SKILL MENU (only the player sees it)
+========================= */
+
+async function processSkill(interaction) {
+
+  const userId = interaction.customId.split("_")[1];
+
+  if (interaction.user.id !== userId) {
+    return interaction.reply({
+      content: "❌ This isn't your menu.",
+      ephemeral: true
+    });
+  }
+
+  const m = matches.get(userId);
+
+  if (!m || m.finished) {
+    return interaction.update({
+      content: "🏁 This match has ended.",
+      components: []
+    });
+  }
+
+  const owner = userId === OWNER_ID;
+  const p = getPlayer(userId);
+
+  if (!owner && !m.flowActive) {
+    return interaction.update({
+      content: "⏳ Your Flow State has ended.",
+      components: []
+    });
+  }
+
+  if (!owner && !m.hasChance) {
+    return interaction.update({
+      content:
+        "⏳ No chance right now. Press **Continue** on the match, then press **Flow** again.",
+      components: []
+    });
+  }
+
+  const skill = getFlowSkills(userId).find(
+    s => s.name === interaction.values[0]
+  );
+
+  if (!skill) {
+    return interaction.update({
+      content: "❌ Skill not found.",
+      components: []
+    });
+  }
+
+  const resultText = performSkill(m, p, owner, skill);
+
+  // Using a skill uses up one Flow State action.
+  if (!owner) {
+    m.flowLeft--;
+
+    if (m.flowLeft <= 0) m.flowActive = false;
+  }
+
+  advanceMatch(m);
+
+  const mainMessage = m.message;
+  const finished = m.minute >= 90;
+
+  let finalEmbed = null;
+
+  if (finished) finalEmbed = finishMatch(userId);
+
+  // Update the public match message.
+  try {
+    if (mainMessage) {
+      await mainMessage.edit(
+        finished
+          ? { embeds: [finalEmbed], components: [] }
+          : {
+              embeds: [matchEmbed(userId)],
+              components: matchButtons(userId)
+            }
+      );
+    }
+  } catch (err) {
+    console.error("Could not update match message:", err);
+  }
+
+  // Update the private skill message.
+  if (finished) {
+    return interaction.update({
+      content: `${resultText}\n\n🏁 **Full time!**`,
+      components: []
+    });
+  }
+
+  const canKeepUsing = owner || (m.flowActive && m.hasChance);
+
+  if (canKeepUsing) {
+    return interaction.update({
+      content: `${resultText}\n\n${skillMenuText(m, userId)}`,
+      components: [skillMenu(userId)]
+    });
+  }
+
+  return interaction.update({
+    content:
+      `${resultText}\n\n` +
+      (m.flowActive
+        ? "⏳ No chance right now. Press **Continue**, then **Flow** again."
+        : "🔥 Your Flow State has ended."),
+    components: []
+  });
+}
+
 
 /* =========================
    OWNER COMMANDS
@@ -1470,7 +1871,7 @@ async function handleCommand(message) {
 }
 
 /* =========================
-   BUTTON HANDLER — UPDATED
+   BUTTON HANDLER
 ========================= */
 
 client.on("interactionCreate", async interaction => {
@@ -1496,12 +1897,6 @@ client.on("interactionCreate", async interaction => {
       });
     }
 
-    /*
-      This handler ALWAYS acknowledges
-      the Discord interaction through
-      reply/update, preventing timeout.
-    */
-
     await processAction(
       interaction,
       action
@@ -1522,6 +1917,33 @@ client.on("interactionCreate", async interaction => {
       await interaction.reply({
         content:
           "❌ Match system error.",
+        ephemeral: true
+      }).catch(() => {});
+    }
+  }
+});
+
+/* =========================
+   SKILL MENU HANDLER
+========================= */
+
+client.on("interactionCreate", async interaction => {
+
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("flowskill_")) return;
+
+  try {
+    await processSkill(interaction);
+  } catch (error) {
+
+    console.error("SKILL MENU ERROR:", error);
+
+    if (
+      !interaction.replied &&
+      !interaction.deferred
+    ) {
+      await interaction.reply({
+        content: "❌ Skill error.",
         ephemeral: true
       }).catch(() => {});
     }
