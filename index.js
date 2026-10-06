@@ -2,6 +2,10 @@ const {
   Client,
   GatewayIntentBits,
   EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ComponentType,
   SlashCommandBuilder
 } = require("discord.js");
 
@@ -20,7 +24,7 @@ const PREFIX = ",";
 const OWNER_ID = "1547542814525493269";
 
 if (!TOKEN) {
-  console.error("DISCORD_TOKEN is missing.");
+  console.error("Missing DISCORD_TOKEN.");
   process.exit(1);
 }
 
@@ -45,42 +49,37 @@ if (!fs.existsSync(DATA_DIR)) {
 
 let db = {
   users: {},
-  seasons: {
-    current: 1,
-    history: []
-  }
+  season: 1
 };
 
 if (fs.existsSync(DB_FILE)) {
   try {
-    const loaded = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
-
-    db = {
-      users: loaded.users || {},
-      seasons: loaded.seasons || {
-        current: 1,
-        history: []
-      }
-    };
-  } catch (error) {
-    console.log("Database could not be loaded. Creating a new one.");
+    db = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+  } catch {
+    console.log("Creating fresh database.");
   }
 }
 
+db.users ||= {};
+db.season ||= 1;
+
 function saveDB() {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+  fs.writeFileSync(
+    DB_FILE,
+    JSON.stringify(db, null, 2)
+  );
 }
 
 /* =========================================================
    HELPERS
 ========================================================= */
 
-function random(min, max) {
+function rand(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function randomFloat(min, max) {
-  return Math.random() * (max - min) + min;
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function normalize(text) {
@@ -91,30 +90,111 @@ function normalize(text) {
     .replace(/[^a-z0-9]/g, "");
 }
 
-function formatNumber(number) {
-  return Number(number || 0).toLocaleString();
+function money(n) {
+  return Number(n || 0).toLocaleString();
 }
 
-function xpRequired(level) {
+function xpNeeded(level) {
   return 100 + level * 75;
 }
 
-function ownerOnly(id) {
-  return id === OWNER_ID;
-}
-
 /* =========================================================
-   RARITIES
+   CLUBS
 ========================================================= */
 
-const RARITIES = {
-  Common: 50,
-  Uncommon: 25,
-  Rare: 13,
-  Epic: 7,
-  Legendary: 3.5,
-  Mythic: 1.2,
-  Secret: 0.3
+const CLUBS = {
+  "Bastard München": 97,
+  "Paris X Gen": 96,
+  "Manshine City": 91,
+  "FC Barcha": 89,
+  "Ubers": 92,
+
+  "Real Madrid": 95,
+  "Barcelona": 92,
+  "Manchester City": 94,
+  "Liverpool": 92,
+  "Arsenal": 91,
+  "Manchester United": 88,
+  "Chelsea": 87,
+  "Bayern Munich": 94,
+  "Borussia Dortmund": 89,
+  "Bayer Leverkusen": 90,
+  "Inter Milan": 91,
+  "AC Milan": 88,
+  "Juventus": 89,
+  "PSG": 94,
+  "Marseille": 84,
+  "Ajax": 84,
+  "PSV": 85,
+  "Benfica": 87,
+  "Porto": 86
+};
+
+const CLUB_ALIASES = {
+  bastard: "Bastard München",
+  bastardmunchen: "Bastard München",
+  bastardmünchen: "Bastard München",
+  bm: "Bastard München",
+
+  pxg: "Paris X Gen",
+  parisxgen: "Paris X Gen",
+
+  manshine: "Manshine City",
+  manshinecity: "Manshine City",
+
+  barcha: "FC Barcha",
+  fcbarcha: "FC Barcha",
+
+  uber: "Ubers",
+  ubers: "Ubers",
+
+  real: "Real Madrid",
+  madrid: "Real Madrid",
+  realmadrid: "Real Madrid",
+
+  barca: "Barcelona",
+  barcelona: "Barcelona",
+
+  city: "Manchester City",
+  mancity: "Manchester City",
+  manchestercity: "Manchester City",
+
+  liverpool: "Liverpool",
+  lfc: "Liverpool",
+
+  arsenal: "Arsenal",
+  gunners: "Arsenal",
+
+  united: "Manchester United",
+  manu: "Manchester United",
+
+  chelsea: "Chelsea",
+
+  bayern: "Bayern Munich",
+  munich: "Bayern Munich",
+
+  dortmund: "Borussia Dortmund",
+  bvb: "Borussia Dortmund",
+
+  leverkusen: "Bayer Leverkusen",
+
+  inter: "Inter Milan",
+  intermilan: "Inter Milan",
+
+  milan: "AC Milan",
+  acmilan: "AC Milan",
+
+  juve: "Juventus",
+  juventus: "Juventus",
+
+  psg: "PSG",
+  paris: "PSG",
+
+  marseille: "Marseille",
+  ajax: "Ajax",
+  psv: "PSV",
+  benfica: "Benfica",
+  porto: "Porto"
 };
 
 /* =========================================================
@@ -143,737 +223,448 @@ const COUNTRIES = [
 const COUNTRY_ALIASES = {
   jap: "Japan",
   jp: "Japan",
-  german: "Germany",
+  japan: "Japan",
+
   ger: "Germany",
-  france: "France",
+  german: "Germany",
+  germany: "Germany",
+
   fra: "France",
-  brazil: "Brazil",
+  france: "France",
+
   bra: "Brazil",
-  argentina: "Argentina",
+  brazil: "Brazil",
+
   arg: "Argentina",
-  england: "England",
+  argentina: "Argentina",
+
   eng: "England",
+  england: "England",
   uk: "England",
-  spain: "Spain",
+
   esp: "Spain",
-  italy: "Italy",
+  spain: "Spain",
+
   ita: "Italy",
-  portugal: "Portugal",
+  italy: "Italy",
+
   por: "Portugal",
-  netherlands: "Netherlands",
+  portugal: "Portugal",
+
   holland: "Netherlands",
+  netherlands: "Netherlands",
+
   belgium: "Belgium",
   croatia: "Croatia",
   nigeria: "Nigeria",
+
   korea: "South Korea",
   skorea: "South Korea",
+  southkorea: "South Korea",
+
   mexico: "Mexico",
   usa: "USA",
   america: "USA"
 };
 
 /* =========================================================
-   LEAGUES
+   55+ PLAYERS
 ========================================================= */
 
-const LEAGUES = {
-  PremierLeague: {
-    name: "Premier League",
-    country: "England",
-    aliases: [
-      "premier",
-      "premier league",
-      "epl",
-      "england league"
-    ]
-  },
+const PLAYER_DATA = [
+  ["Yoichi Isagi", "isagi", 91, "Legendary", "ST", "Japan", "Bastard München",
+    ["Meta Vision", "Direct Shot", "Spatial Awareness", "Two-Gun Volley", "Adaptation"]],
 
-  LaLiga: {
-    name: "La Liga",
-    country: "Spain",
-    aliases: [
-      "laliga",
-      "la liga",
-      "liga",
-      "spanish league"
-    ]
-  },
+  ["Michael Kaiser", "kaiser", 98, "Secret", "ST", "Germany", "Bastard München",
+    ["Kaiser Impact", "Kaiser Impact Magnus", "Meta Vision", "Predator Eye", "Emperor Aura"]],
 
-  Bundesliga: {
-    name: "Bundesliga",
-    country: "Germany",
-    aliases: [
-      "bundes",
-      "bundesliga",
-      "german league"
-    ]
-  },
+  ["Noel Noa", "noa", 99, "Secret", "ST", "Germany", "Bastard München",
+    ["World's Best", "Perfect Ambidexterity", "Complete Striker", "Physical Mastery", "Adaptation"]],
 
-  SerieA: {
-    name: "Serie A",
-    country: "Italy",
-    aliases: [
-      "serie a",
-      "serie",
-      "italian league"
-    ]
-  },
+  ["Rin Itoshi", "rin", 96, "Mythic", "ST", "Japan", "Paris X Gen",
+    ["Destroyer Mode", "Puppet Control", "Flow", "Curve Shot", "Spatial Reading"]],
 
-  Ligue1: {
-    name: "Ligue 1",
-    country: "France",
-    aliases: [
-      "ligue",
-      "ligue 1",
-      "french league"
-    ]
-  },
+  ["Julian Loki", "loki", 97, "Mythic", "RW", "France", "Paris X Gen",
+    ["Godspeed", "Lightning Speed", "Explosive Acceleration", "Speed Burst", "Counter Attack"]],
 
-  Eredivisie: {
-    name: "Eredivisie",
-    country: "Netherlands",
-    aliases: [
-      "eredivisie",
-      "ered",
-      "dutch league"
-    ]
-  },
+  ["Lavinho", "lavinho", 94, "Legendary", "LW", "Brazil", "FC Barcha",
+    ["Magician", "Creative Dribbling", "Elastic Dribble", "1v1 Mastery", "Brazilian Flair"]],
 
-  LigaPortugal: {
-    name: "Liga Portugal",
-    country: "Portugal",
-    aliases: [
-      "liga portugal",
-      "portuguese league",
-      "portugal league"
-    ]
-  },
+  ["Meguru Bachira", "bachira", 89, "Epic", "RW", "Japan", "FC Barcha",
+    ["Monster", "Dribbling", "Elastic Dribble", "Solo Run", "Creative Passing"]],
 
-  NeoEgoistLeague: {
-    name: "Neo Egoist League",
-    country: "Japan",
-    aliases: [
-      "nel",
-      "neo egoist",
-      "neo egoist league",
-      "blue lock league"
-    ]
-  },
+  ["Shoei Barou", "barou", 90, "Epic", "ST", "Japan", "Ubers",
+    ["Predator Eye", "Charging Drive", "Chop Feint", "King's Presence", "Long Shot"]],
 
-  UCL: {
-    name: "UEFA Champions League",
-    country: "Europe",
-    aliases: [
-      "ucl",
-      "champions",
-      "champions league",
-      "uefa champions league",
-      "cl"
-    ]
-  },
+  ["Seishiro Nagi", "nagi", 93, "Legendary", "ST", "Japan", "Manshine City",
+    ["Perfect Trapping", "Revolver Shot", "First Touch", "Creativity", "Lazy Genius"]],
 
-  WorldCup: {
-    name: "World Cup",
-    country: "International",
-    aliases: [
-      "wc",
-      "world cup",
-      "worldcup",
-      "world championship"
-    ]
-  }
-};
+  ["Reo Mikage", "reo", 86, "Rare", "CM", "Japan", "Manshine City",
+    ["Chameleon", "Copy", "Vision", "Passing", "Versatility"]],
+
+  ["Rensuke Kunigami", "kunigami", 88, "Epic", "ST", "Japan", "Bastard München",
+    ["Wild Card", "Lefty Shot", "Power Shot", "Physicality", "Long Range"]],
+
+  ["Oliver Aiku", "aiku", 88, "Epic", "CB", "Japan", "Ubers",
+    ["Defense IQ", "Aerial Duel", "Man Marking", "Reading", "Lockdown"]],
+
+  ["Jyubei Aryu", "aryu", 82, "Rare", "CB", "Japan", "Ubers",
+    ["Giant Reach", "Aerial Power", "Long Legs", "Clearance", "Marking"]],
+
+  ["Ikki Niko", "niko", 83, "Rare", "CB", "Japan", "Ubers",
+    ["Spatial Awareness", "Prediction", "Intercept", "Vision", "Reading"]],
+
+  ["Eita Otoya", "otoya", 84, "Rare", "RW", "Japan", "FC Barcha",
+    ["Stealth", "Off-Ball Run", "Speed", "Shadowing", "Quick Finish"]],
+
+  ["Tabito Karasu", "karasu", 87, "Epic", "CM", "Japan", "Paris X Gen",
+    ["Ball Control", "Midfield Control", "Feint", "Reading", "Possession"]],
+
+  ["Kenyu Yukimiya", "yukimiya", 87, "Epic", "LW", "Japan", "Bastard München",
+    ["Gyro Shot", "Dribbling", "1v1", "Acceleration", "Cut Inside"]],
+
+  ["Hyoma Chigiri", "chigiri", 88, "Epic", "LW", "Japan", "Manshine City",
+    ["Speed", "44 Panther Snipe", "Acceleration", "Breakaway", "Dribble"]],
+
+  ["Yo Hiori", "hiori", 85, "Rare", "CM", "Japan", "Bastard München",
+    ["Perfect Pass", "Vision", "Through Ball", "Cross", "Awareness"]],
+
+  ["Gagamaru Gin", "gagamaru", 84, "Rare", "GK", "Japan", "Bastard München",
+    ["Super Save", "Reflexes", "Acrobatics", "Long Reach", "Instinct"]],
+
+  ["Zantetsu Tsurugi", "zantetsu", 80, "Rare", "RW", "Japan", "Manshine City",
+    ["Explosive Speed", "Acceleration", "Direct Run", "Power", "Burst"]],
+
+  ["Kiyoshi Fujimoto", "fujimoto", 78, "Uncommon", "CM", "Japan", "Blue Lock",
+    ["Quick Pass", "Vision", "Control", "Movement", "Press"]],
+
+  ["Ryusei Shidou", "shidou", 95, "Mythic", "ST", "Japan", "Paris X Gen",
+    ["Big Bang Drive", "Dragon Drive", "Acrobatic Shot", "Flow", "Instinct"]],
+
+  ["Sae Itoshi", "sae", 96, "Mythic", "CM", "Japan", "Real Madrid",
+    ["Perfect Pass", "Vision", "Through Ball", "Game Control", "Elite Touch"]],
+
+  ["Don Lorenzo", "lorenzo", 93, "Legendary", "CB", "Italy", "Ubers",
+    ["Zombie Defense", "Man Marking", "Steal", "Aerial Duel", "Lockdown"]],
+
+  ["Alexis Ness", "ness", 87, "Epic", "CM", "Germany", "Bastard München",
+    ["Magic Pass", "Through Ball", "Curve", "Link Up", "Precision"]],
+
+  ["Kenyu Yukimiya", "yukimiya2", 87, "Epic", "LW", "Japan", "Bastard München",
+    ["Gyro Shot", "Dribble", "Acceleration", "1v1", "Cut Inside"]],
+
+  ["Agi", "agi", 86, "Rare", "ST", "England", "Manshine City",
+    ["Control", "First Touch", "Shot", "Positioning", "Technique"]],
+
+  ["Chris Prince", "prince", 95, "Mythic", "ST", "England", "Manshine City",
+    ["Perfect Body", "Power Shot", "Physicality", "Speed", "Super Striker"]],
+
+  ["Marc Snuffy", "snuffy", 95, "Mythic", "ST", "Italy", "Ubers",
+    ["Tactical Vision", "Perfect Strategy", "Passing", "Leadership", "Adaptation"]],
+
+  ["Adam Blake", "blake", 88, "Epic", "ST", "England", "Manshine City",
+    ["Power", "Finishing", "Physicality", "Header", "Positioning"]],
+
+  ["Leonardo Luna", "luna", 89, "Epic", "ST", "Spain", "Real Madrid",
+    ["Technique", "Dribbling", "Finishing", "Vision", "Flair"]],
+
+  ["Dada Silva", "silva", 90, "Legendary", "ST", "Brazil", "Real Madrid",
+    ["Power", "Acceleration", "Shot", "Strength", "Finishing"]],
+
+  ["Pablo Cavasoz", "cavasoz", 88, "Epic", "LW", "Argentina", "FC Barcha",
+    ["Dribbling", "Flair", "Curve", "Speed", "Creativity"]],
+
+  ["Darai Miroku", "miroku", 77, "Uncommon", "CB", "Japan", "Blue Lock",
+    ["Marking", "Tackle", "Strength", "Clearance", "Press"]],
+
+  ["Junichi Wanima", "wanima", 76, "Uncommon", "ST", "Japan", "Blue Lock",
+    ["Press", "Shot", "Movement", "Pass", "Positioning"]],
+
+  ["Shohei Saramadara", "saramadara", 75, "Uncommon", "CM", "Japan", "Blue Lock",
+    ["Pass", "Control", "Press", "Movement", "Vision"]],
+
+  ["Asahi Naruhaya", "naruhaya", 74, "Uncommon", "ST", "Japan", "Blue Lock",
+    ["Off-Ball Run", "Speed", "Finishing", "Movement", "Press"]],
+
+  ["Wataru Kuon", "kuon", 73, "Common", "CM", "Japan", "Blue Lock",
+    ["Passing", "Positioning", "Marking", "Movement", "Press"]],
+
+  ["Gurimu Igarashi", "igaguri", 68, "Common", "ST", "Japan", "Blue Lock",
+    ["Malicia", "Dive", "Press", "Movement", "Survival"]],
+
+  ["Yohei Tanaka", "tanaka", 72, "Common", "RW", "Japan", "Blue Lock",
+    ["Speed", "Pass", "Dribble", "Shot", "Movement"]],
+
+  ["Kenyu Okawa", "okawa", 74, "Uncommon", "ST", "Japan", "Blue Lock",
+    ["Shot", "Movement", "Press", "Control", "Positioning"]],
+
+  ["Ryosuke Kira", "kira", 79, "Rare", "ST", "Japan", "Blue Lock",
+    ["Fair Play", "Technique", "Shot", "Control", "Movement"]],
+
+  ["Gin Gagamaru", "gin", 84, "Rare", "GK", "Japan", "Bastard München",
+    ["Reflexes", "Acrobatics", "Save", "Reach", "Instinct"]],
+
+  ["Kento Cho", "cho", 76, "Uncommon", "CB", "Japan", "Blue Lock",
+    ["Tackle", "Marking", "Strength", "Clearance", "Press"]],
+
+  ["Kenyu Aoba", "aoba", 78, "Uncommon", "CM", "Japan", "Blue Lock",
+    ["Pass", "Vision", "Control", "Movement", "Press"]],
+
+  ["Shizuka Haiji", "haiji", 77, "Uncommon", "LW", "Japan", "Blue Lock",
+    ["Speed", "Dribble", "Cross", "Shot", "Movement"]],
+
+  ["Kairu Saramadara", "kairu", 78, "Uncommon", "CM", "Japan", "Blue Lock",
+    ["Pass", "Control", "Vision", "Press", "Movement"]],
+
+  ["Michael Kaiser Jr", "kaiserjr", 82, "Rare", "ST", "Germany", "Bastard München",
+    ["Precision Shot", "Positioning", "Acceleration", "Finishing", "Movement"]],
+
+  ["Noah Kazama", "kazama", 80, "Rare", "ST", "Japan", "Blue Lock",
+    ["Power Shot", "Speed", "Finishing", "Movement", "Press"]],
+
+  ["Rinzo Kageyama", "kageyama", 81, "Rare", "CM", "Japan", "Blue Lock",
+    ["Vision", "Passing", "Control", "Prediction", "Press"]],
+
+  ["Haruto Shiba", "shiba", 79, "Rare", "RW", "Japan", "Blue Lock",
+    ["Dribble", "Speed", "Cross", "Shot", "Movement"]],
+
+  ["Akira Sendo", "sendo", 80, "Rare", "ST", "Japan", "Blue Lock",
+    ["Finishing", "Header", "Positioning", "Power", "Movement"]],
+
+  ["Ranze Kurona", "kurona", 83, "Rare", "RB", "Japan", "Bastard München",
+    ["Speed", "Link Up", "Passing", "Overlap", "Press"]],
+
+  ["Jingo Raichi", "raichi", 82, "Rare", "CM", "Japan", "Bastard München",
+    ["Man Marking", "Stamina", "Press", "Physicality", "Lockdown"]],
+
+  ["Gen Fukaku", "fukaku", 81, "Rare", "GK", "Japan", "Ubers",
+    ["Reflexes", "Save", "Reach", "Positioning", "Clearance"]],
+
+  ["Shuto Sendo", "shuto", 79, "Uncommon", "ST", "Japan", "Ubers",
+    ["Finishing", "Movement", "Header", "Power", "Positioning"]],
+
+  ["Oliver Aiku Prime", "aikuprime", 91, "Legendary", "CB", "Japan", "Ubers",
+    ["Ultimate Defense", "Reading", "Aerial Duel", "Lockdown", "Intercept"]]
+];
 
 /* =========================================================
-   CLUBS
+   BUILD PLAYER DATABASE
 ========================================================= */
 
-const CLUBS = {
-  "Real Madrid": {
-    league: "LaLiga",
-    country: "Spain",
-    strength: 95,
-    aliases: ["real", "madrid", "realmadrid", "rm"]
-  },
+const PLAYERS = {};
 
-  Barcelona: {
-    league: "LaLiga",
-    country: "Spain",
-    strength: 92,
-    aliases: ["barca", "barca", "fcbarcelona"]
-  },
+for (const data of PLAYER_DATA) {
+  const [
+    name,
+    id,
+    rating,
+    rarity,
+    position,
+    country,
+    club,
+    skills
+  ] = data;
 
-  "Atletico Madrid": {
-    league: "LaLiga",
-    country: "Spain",
-    strength: 89,
-    aliases: ["atletico", "atleti", "atm"]
-  },
-
-  "Manchester City": {
-    league: "PremierLeague",
-    country: "England",
-    strength: 94,
-    aliases: ["city", "mancity", "manchester city", "mc"]
-  },
-
-  Liverpool: {
-    league: "PremierLeague",
-    country: "England",
-    strength: 92,
-    aliases: ["liverpool", "lfc"]
-  },
-
-  Arsenal: {
-    league: "PremierLeague",
-    country: "England",
-    strength: 91,
-    aliases: ["arsenal", "gunners"]
-  },
-
-  "Manchester United": {
-    league: "PremierLeague",
-    country: "England",
-    strength: 88,
-    aliases: ["united", "manu", "manchesterunited", "mu"]
-  },
-
-  Chelsea: {
-    league: "PremierLeague",
-    country: "England",
-    strength: 87,
-    aliases: ["chelsea", "blues"]
-  },
-
-  "Bayern Munich": {
-    league: "Bundesliga",
-    country: "Germany",
-    strength: 94,
-    aliases: ["bayern", "munich", "fcbayern"]
-  },
-
-  "Borussia Dortmund": {
-    league: "Bundesliga",
-    country: "Germany",
-    strength: 89,
-    aliases: ["dortmund", "bvb"]
-  },
-
-  "Bayer Leverkusen": {
-    league: "Bundesliga",
-    country: "Germany",
-    strength: 90,
-    aliases: ["leverkusen", "bayer"]
-  },
-
-  "Inter Milan": {
-    league: "SerieA",
-    country: "Italy",
-    strength: 91,
-    aliases: ["inter", "intermilan", "internazionale"]
-  },
-
-  "AC Milan": {
-    league: "SerieA",
-    country: "Italy",
-    strength: 88,
-    aliases: ["milan", "acmilan"]
-  },
-
-  Juventus: {
-    league: "SerieA",
-    country: "Italy",
-    strength: 89,
-    aliases: ["juve", "juventus"]
-  },
-
-  PSG: {
-    league: "Ligue1",
-    country: "France",
-    strength: 94,
-    aliases: [
-      "psg",
-      "paris",
-      "paris saint germain",
-      "parissaintgermain"
-    ]
-  },
-
-  Marseille: {
-    league: "Ligue1",
-    country: "France",
-    strength: 84,
-    aliases: ["om", "marseille"]
-  },
-
-  Ajax: {
-    league: "Eredivisie",
-    country: "Netherlands",
-    strength: 84,
-    aliases: ["ajax"]
-  },
-
-  PSV: {
-    league: "Eredivisie",
-    country: "Netherlands",
-    strength: 85,
-    aliases: ["psv"]
-  },
-
-  Benfica: {
-    league: "LigaPortugal",
-    country: "Portugal",
-    strength: 87,
-    aliases: ["benfica"]
-  },
-
-  Porto: {
-    league: "LigaPortugal",
-    country: "Portugal",
-    strength: 86,
-    aliases: ["porto", "fcporto"]
-  },
-
-  "Bastard München": {
-    league: "NeoEgoistLeague",
-    country: "Germany",
-    strength: 97,
-    aliases: [
-      "bastard",
-      "bastard munchen",
-      "bastardmünchen",
-      "bastardmunchen",
-      "bm"
-    ]
-  },
-
-  "Paris X Gen": {
-    league: "NeoEgoistLeague",
-    country: "France",
-    strength: 96,
-    aliases: [
-      "pxg",
-      "paris x gen",
-      "parisxgen"
-    ]
-  },
-
-  "Manshine City": {
-    league: "NeoEgoistLeague",
-    country: "England",
-    strength: 91,
-    aliases: [
-      "manshine",
-      "manshine city",
-      "mc"
-    ]
-  },
-
-  "FC Barcha": {
-    league: "NeoEgoistLeague",
-    country: "Spain",
-    strength: 89,
-    aliases: [
-      "barcha",
-      "fc barcha",
-      "fcbarcha"
-    ]
-  },
-
-  Ubers: {
-    league: "NeoEgoistLeague",
-    country: "Italy",
-    strength: 92,
-    aliases: [
-      "uber",
-      "ubers"
-    ]
-  }
-};
-
-/* =========================================================
-   CHARACTERS
-========================================================= */
-
-const CHARACTERS = {
-  isagi: {
-    name: "Yoichi Isagi",
-    rarity: "Legendary",
-    position: "ST",
-    country: "Japan",
-    club: "Bastard München",
-    rating: 91,
-    aliases: [
-      "isagi",
-      "yoichi",
-      "yoichi isagi"
-    ],
-    skills: [
-      "Meta Vision",
-      "Direct Shot",
-      "Spatial Awareness",
-      "Off-Ball Movement",
-      "Two-Gun Volley",
-      "Adaptation"
-    ]
-  },
-
-  kaiser: {
-    name: "Michael Kaiser",
-    rarity: "Secret",
-    position: "ST",
-    country: "Germany",
-    club: "Bastard München",
-    rating: 98,
-    aliases: [
-      "kaiser",
-      "michael",
-      "michael kaiser",
-      "mikey"
-    ],
-    skills: [
-      "Kaiser Impact",
-      "Kaiser Impact Magnus",
-      "Meta Vision",
-      "Predator Eye",
-      "Elite Positioning",
-      "Emperor's Aura"
-    ]
-  },
-
-  rin: {
-    name: "Rin Itoshi",
-    rarity: "Mythic",
-    position: "ST",
-    country: "Japan",
-    club: "Paris X Gen",
-    rating: 96,
-    aliases: [
-      "rin",
-      "itoshi rin",
-      "rin itoshi"
-    ],
-    skills: [
-      "Destroyer Mode",
-      "Puppet Control",
-      "Flow",
-      "Curve Shot",
-      "Spatial Reading",
-      "Predator Instinct"
-    ]
-  },
-
-  noa: {
-    name: "Noel Noa",
-    rarity: "Secret",
-    position: "ST",
-    country: "Germany",
-    club: "Bastard München",
-    rating: 99,
-    aliases: [
-      "noa",
-      "noel",
-      "noel noa"
-    ],
-    skills: [
-      "Perfect Ambidexterity",
-      "World Class Shooting",
-      "Physical Mastery",
-      "Adaptation",
-      "Complete Striker",
-      "World's Best"
-    ]
-  },
-
-  loki: {
-    name: "Julian Loki",
-    rarity: "Mythic",
-    position: "RW",
-    country: "France",
-    club: "Paris X Gen",
-    rating: 97,
-    aliases: [
-      "loki",
-      "julian",
-      "julian loki"
-    ],
-    skills: [
-      "Lightning Speed",
-      "Explosive Acceleration",
-      "Dribbling",
-      "Speed Burst",
-      "Counter Attack",
-      "Godspeed"
-    ]
-  },
-
-  lavinho: {
-    name: "Lavinho",
-    rarity: "Legendary",
-    position: "LW",
-    country: "Brazil",
-    club: "FC Barcha",
-    rating: 94,
-    aliases: [
-      "lavinho",
-      "lav"
-    ],
-    skills: [
-      "Creative Dribbling",
-      "Elastic Dribble",
-      "Brazilian Flair",
-      "1v1 Mastery",
-      "Technical Genius",
-      "Magician"
-    ]
-  },
-
-  bachira: {
-    name: "Meguru Bachira",
-    rarity: "Epic",
-    position: "RW",
-    country: "Japan",
-    club: "FC Barcha",
-    rating: 89,
-    aliases: [
-      "bachira",
-      "meguru",
-      "meguru bachira"
-    ],
-    skills: [
-      "Monster",
-      "Dribbling",
-      "Elastic Dribble",
-      "Creative Passing",
-      "Flow",
-      "Solo Run"
-    ]
-  },
-
-  barou: {
-    name: "Shoei Barou",
-    rarity: "Epic",
-    position: "ST",
-    country: "Japan",
-    club: "Ubers",
-    rating: 90,
-    aliases: [
-      "barou",
-      "shoei",
-      "shoei barou"
-    ],
-    skills: [
-      "Predator Eye",
-      "Chop Feint",
-      "Long Range Shot",
-      "King's Presence",
-      "Flow",
-      "Charging Drive"
-    ]
-  },
-
-  nagi: {
-    name: "Seishiro Nagi",
-    rarity: "Legendary",
-    position: "ST",
-    country: "Japan",
-    club: "Manshine City",
-    rating: 93,
-    aliases: [
-      "nagi",
-      "seishiro",
-      "seishiro nagi"
-    ],
-    skills: [
-      "Perfect Trapping",
-      "Five-Stage Revolver",
-      "Trapping",
-      "Creativity",
-      "First Touch",
-      "Lazy Genius"
-    ]
-  },
-
-  reo: {
-    name: "Reo Mikage",
-    rarity: "Rare",
-    position: "CM",
-    country: "Japan",
-    club: "Manshine City",
-    rating: 86,
-    aliases: [
-      "reo",
-      "mikage",
-      "reo mikage"
-    ],
-    skills: [
-      "Chameleon",
-      "Copy",
-      "Passing",
-      "Adaptability",
-      "Vision",
-      "Versatility"
-    ]
-  }
-};
-
-/* =========================================================
-   TROPHIES / AWARDS
-========================================================= */
-
-const TROPHIES = {
-  ucl: "UEFA Champions League",
-  champions: "UEFA Champions League",
-
-  premierleague: "Premier League",
-  laliga: "La Liga",
-  bundesliga: "Bundesliga",
-  seriea: "Serie A",
-  ligue1: "Ligue 1",
-
-  worldcup: "World Cup",
-  wc: "World Cup",
-
-  copa: "Continental Cup",
-
-  ballondor: "Ballon d'Or",
-  ballon: "Ballon d'Or",
-
-  goldenboot: "Golden Boot",
-  boot: "Golden Boot",
-
-  goldenglove: "Golden Glove",
-  glove: "Golden Glove",
-
-  mvp: "Season MVP"
-};
-
-const TROPHY_ALIASES = Object.keys(TROPHIES);
-
-/* =========================================================
-   SMART MATCHING
-========================================================= */
-
-function similarityScore(input, candidate) {
-  const a = normalize(input);
-  const b = normalize(candidate);
-
-  if (!a || !b) return 0;
-
-  if (a === b) return 100;
-
-  if (b.includes(a)) return 85;
-  if (a.includes(b)) return 80;
-
-  let same = 0;
-
-  for (const char of a) {
-    if (b.includes(char)) same++;
-  }
-
-  return Math.floor((same / Math.max(a.length, b.length)) * 70);
+  PLAYERS[id] = {
+    id,
+    name,
+    rating,
+    rarity,
+    position,
+    country,
+    club,
+    skills
+  };
 }
 
-function smartFind(input, database, aliasesGetter) {
-  if (!input) return null;
+/* =========================================================
+   PLAYER ALIASES
+========================================================= */
 
+const PLAYER_ALIASES = {
+  michael: "kaiser",
+  micheal: "kaiser",
+  michaelkaiser: "kaiser",
+  mikey: "kaiser",
+
+  yoichi: "isagi",
+  yoichiisagi: "isagi",
+
+  noel: "noa",
+  noelnoa: "noa",
+
+  julian: "loki",
+  julianloki: "loki",
+
+  meguru: "bachira",
+  megurubachira: "bachira",
+
+  shoei: "barou",
+  shoeibarou: "barou",
+
+  seishiro: "nagi",
+  seishironagi: "nagi",
+
+  reo: "reo",
+  reomikage: "reo",
+
+  itoshi: "rin",
+  rinitoshi: "rin",
+
+  ryusei: "shidou",
+  shidou: "shidou",
+
+  saeitoshi: "sae",
+
+  chigiri: "chigiri",
+  hyoma: "chigiri",
+
+  kurona: "kurona",
+  raichi: "raichi"
+};
+
+/* =========================================================
+   SMART SEARCH
+========================================================= */
+
+function levenshtein(a, b) {
+  a = normalize(a);
+  b = normalize(b);
+
+  const matrix = [];
+
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      matrix[i][j] =
+        b[i - 1] === a[j - 1]
+          ? matrix[i - 1][j - 1]
+          : Math.min(
+              matrix[i - 1][j - 1] + 1,
+              matrix[i][j - 1] + 1,
+              matrix[i - 1][j] + 1
+            );
+    }
+  }
+
+  return matrix[b.length][a.length];
+}
+
+function smartResolve(input, collection, aliases = {}) {
   const query = normalize(input);
 
-  let best = null;
-  let bestScore = 0;
+  if (!query) return null;
 
-  for (const [key, value] of Object.entries(database)) {
+  if (aliases[query]) {
+    return aliases[query];
+  }
+
+  for (const key of Object.keys(collection)) {
+    if (normalize(key) === query) {
+      return key;
+    }
+
+    if (collection[key]?.name &&
+        normalize(collection[key].name) === query) {
+      return key;
+    }
+  }
+
+  let best = null;
+  let bestDistance = Infinity;
+
+  for (const key of Object.keys(collection)) {
     const names = [
       key,
-      value.name || "",
-      ...(aliasesGetter(value) || [])
-    ];
+      collection[key]?.name,
+      ...(collection[key]?.aliases || [])
+    ].filter(Boolean);
 
     for (const name of names) {
-      const score = similarityScore(query, name);
+      const n = normalize(name);
 
-      if (score > bestScore) {
-        bestScore = score;
+      if (n.includes(query) || query.includes(n)) {
+        return key;
+      }
+
+      const distance = levenshtein(
+        query,
+        n
+      );
+
+      const allowed =
+        query.length <= 4 ? 1 :
+        query.length <= 7 ? 2 :
+        3;
+
+      if (
+        distance <= allowed &&
+        distance < bestDistance
+      ) {
+        bestDistance = distance;
         best = key;
       }
     }
   }
 
-  return bestScore >= 45 ? best : null;
+  return best;
 }
 
-function findCharacter(input) {
-  return smartFind(
+function findPlayer(input) {
+  const alias = PLAYER_ALIASES[normalize(input)];
+
+  if (alias && PLAYERS[alias]) {
+    return alias;
+  }
+
+  return smartResolve(
     input,
-    CHARACTERS,
-    char => char.aliases
+    PLAYERS
   );
 }
 
 function findClub(input) {
-  return smartFind(
+  return smartResolve(
     input,
     CLUBS,
-    club => club.aliases
-  );
-}
-
-function findLeague(input) {
-  return smartFind(
-    input,
-    LEAGUES,
-    league => league.aliases
+    CLUB_ALIASES
   );
 }
 
 function findCountry(input) {
-  if (!input) return null;
+  const q = normalize(input);
 
-  const direct = COUNTRY_ALIASES[normalize(input)];
-
-  if (direct) return direct;
+  if (COUNTRY_ALIASES[q]) {
+    return COUNTRY_ALIASES[q];
+  }
 
   let best = null;
-  let score = 0;
+  let distance = Infinity;
 
   for (const country of COUNTRIES) {
-    const current = similarityScore(input, country);
+    const d = levenshtein(
+      q,
+      normalize(country)
+    );
 
-    if (current > score) {
-      score = current;
+    if (d < distance) {
+      distance = d;
       best = country;
     }
   }
 
-  return score >= 50 ? best : null;
-}
-
-function findTrophy(input) {
-  if (!input) return null;
-
-  const query = normalize(input);
-
-  if (TROPHIES[query]) {
-    return TROPHIES[query];
-  }
-
-  let best = null;
-  let score = 0;
-
-  for (const alias of TROPHY_ALIASES) {
-    const current = similarityScore(query, alias);
-
-    if (current > score) {
-      score = current;
-      best = TROPHIES[alias];
-    }
-  }
-
-  return score >= 45 ? best : null;
+  return distance <= 3 ? best : null;
 }
 
 /* =========================================================
-   USER DATA
+   USER
 ========================================================= */
 
 function getUser(id) {
@@ -889,15 +680,25 @@ function getUser(id) {
 
       rating: 75,
       position: "ST",
-
       career: "Rookie",
 
       country: "Japan",
-
       club: "Blue Lock",
 
-      activeCharacter: null,
-      characters: [],
+      activePlayer: null,
+      players: [],
+
+      attributes: {
+        shooting: 70,
+        passing: 70,
+        dribbling: 70,
+        speed: 70,
+        defense: 60,
+        physical: 65,
+        vision: 65
+      },
+
+      stamina: 100,
 
       stats: {
         matches: 0,
@@ -906,12 +707,11 @@ function getUser(id) {
         assists: 0,
         wins: 0,
         draws: 0,
-        losses: 0,
-        cleanSheets: 0
+        losses: 0
       },
 
       seasonStats: {
-        appearances: 0,
+        matches: 0,
         goals: 0,
         assists: 0,
         wins: 0,
@@ -920,20 +720,12 @@ function getUser(id) {
       },
 
       trophies: [],
-      awards: [],
 
       transferValue: 1000000,
-
-      contract: {
-        club: null,
-        expires: 1
-      },
 
       clubInterest: {},
 
       offers: [],
-
-      history: [],
 
       cooldowns: {}
     };
@@ -943,7 +735,7 @@ function getUser(id) {
 }
 
 /* =========================================================
-   XP / LEVEL
+   XP
 ========================================================= */
 
 function addXP(player, amount) {
@@ -951,8 +743,10 @@ function addXP(player, amount) {
 
   let levels = 0;
 
-  while (player.xp >= xpRequired(player.level)) {
-    player.xp -= xpRequired(player.level);
+  while (
+    player.xp >= xpNeeded(player.level)
+  ) {
+    player.xp -= xpNeeded(player.level);
     player.level++;
     levels++;
   }
@@ -961,192 +755,314 @@ function addXP(player, amount) {
 }
 
 /* =========================================================
-   COOLDOWNS
+   SKILLS
 ========================================================= */
 
-function onCooldown(player, command, seconds) {
-  const last = player.cooldowns[command] || 0;
-
-  return Date.now() - last < seconds * 1000;
+function getActivePlayer(player) {
+  return player.activePlayer
+    ? PLAYERS[player.activePlayer]
+    : null;
 }
 
-function cooldownRemaining(player, command, seconds) {
-  const last = player.cooldowns[command] || 0;
+function skillPower(player, skill) {
+  const p = getActivePlayer(player);
 
-  return Math.max(
-    0,
-    Math.ceil(
-      (seconds * 1000 - (Date.now() - last)) / 1000
-    )
-  );
-}
+  if (!p) return 0;
 
-function useCooldown(player, command) {
-  player.cooldowns[command] = Date.now();
+  let power = p.rating;
+
+  if (
+    skill.toLowerCase().includes("shot") ||
+    skill.toLowerCase().includes("impact") ||
+    skill.toLowerCase().includes("finishing")
+  ) {
+    power += player.attributes.shooting * 0.2;
+  }
+
+  if (
+    skill.toLowerCase().includes("drib") ||
+    skill.toLowerCase().includes("speed")
+  ) {
+    power += player.attributes.dribbling * 0.15;
+    power += player.attributes.speed * 0.15;
+  }
+
+  if (
+    skill.toLowerCase().includes("pass") ||
+    skill.toLowerCase().includes("vision")
+  ) {
+    power += player.attributes.passing * 0.15;
+    power += player.attributes.vision * 0.15;
+  }
+
+  if (
+    skill.toLowerCase().includes("def")
+  ) {
+    power += player.attributes.defense * 0.2;
+  }
+
+  return power;
 }
 
 /* =========================================================
-   RARITY / GACHA
+   TRAINING
 ========================================================= */
 
-function rollRarity() {
-  const roll = Math.random() * 100;
-  let current = 0;
+const TRAINING = {
+  shooting: {
+    name: "Shooting",
+    stat: "shooting"
+  },
 
-  for (const [rarity, chance] of Object.entries(RARITIES)) {
-    current += chance;
+  passing: {
+    name: "Passing",
+    stat: "passing"
+  },
 
-    if (roll <= current) {
-      return rarity;
+  dribbling: {
+    name: "Dribbling",
+    stat: "dribbling"
+  },
+
+  speed: {
+    name: "Speed",
+    stat: "speed"
+  },
+
+  defense: {
+    name: "Defense",
+    stat: "defense"
+  },
+
+  physical: {
+    name: "Physical",
+    stat: "physical"
+  },
+
+  vision: {
+    name: "Vision",
+    stat: "vision"
+  }
+};
+
+function train(player, type) {
+  const training = TRAINING[type];
+
+  if (!training) return null;
+
+  if (player.stamina < 20) {
+    return {
+      success: false,
+      message: "You don't have enough stamina."
+    };
+  }
+
+  player.stamina -= 20;
+
+  const old = player.attributes[
+    training.stat
+  ];
+
+  const increase = rand(1, 3);
+
+  player.attributes[
+    training.stat
+  ] = clamp(
+    old + increase,
+    1,
+    99
+  );
+
+  const xp = rand(70, 130);
+
+  const levels = addXP(
+    player,
+    xp
+  );
+
+  /*
+     Small OVR improvement when
+     attributes become stronger.
+  */
+
+  const oldOVR = player.rating;
+
+  const average =
+    Object.values(player.attributes)
+      .reduce((a, b) => a + b, 0) /
+    Object.keys(player.attributes).length;
+
+  player.rating = clamp(
+    Math.round(
+      average +
+      (getActivePlayer(player)?.rating || 0) * 0.12
+    ),
+    50,
+    99
+  );
+
+  saveDB();
+
+  return {
+    success: true,
+    training,
+    old,
+    increase,
+    newValue:
+      player.attributes[training.stat],
+    xp,
+    levels,
+    oldOVR,
+    newOVR: player.rating
+  };
+}
+
+/* =========================================================
+   MATCH ENGINE
+========================================================= */
+
+function generateChance(player) {
+  const active = getActivePlayer(player);
+
+  if (!active) {
+    return {
+      type: "normal",
+      text: "You received a chance!",
+      power: player.rating
+    };
+  }
+
+  const types = [
+    "shoot",
+    "pass",
+    "dribble",
+    "skill"
+  ];
+
+  const type =
+    types[rand(0, types.length - 1)];
+
+  return {
+    type,
+    text:
+      type === "shoot"
+        ? "You are through on goal!"
+        : type === "pass"
+          ? "A teammate is making a run!"
+          : type === "dribble"
+            ? "A defender is blocking your path!"
+            : "You have a perfect moment to use your ability!",
+    power: active.rating
+  };
+}
+
+function matchButtonRow(player) {
+  const active = getActivePlayer(player);
+
+  return new ActionRowBuilder()
+    .addComponents(
+      new ButtonBuilder()
+        .setCustomId("shoot")
+        .setLabel("SHOOT")
+        .setStyle(ButtonStyle.Danger),
+
+      new ButtonBuilder()
+        .setCustomId("pass")
+        .setLabel("PASS")
+        .setStyle(ButtonStyle.Primary),
+
+      new ButtonBuilder()
+        .setCustomId("dribble")
+        .setLabel("DRIBBLE")
+        .setStyle(ButtonStyle.Success),
+
+      new ButtonBuilder()
+        .setCustomId("skill")
+        .setLabel(
+          active ? "USE SKILL" : "SKILL"
+        )
+        .setStyle(ButtonStyle.Secondary)
+    );
+}
+
+function performAction(
+  player,
+  action,
+  chance,
+  opponentStrength
+) {
+  let stat = 0;
+
+  if (action === "shoot") {
+    stat = player.attributes.shooting;
+  }
+
+  if (action === "pass") {
+    stat = player.attributes.passing;
+  }
+
+  if (action === "dribble") {
+    stat =
+      (player.attributes.dribbling +
+        player.attributes.speed) / 2;
+  }
+
+  if (action === "skill") {
+    stat = skillPower(
+      player,
+      getActivePlayer(player)?.skills[0] || ""
+    );
+  }
+
+  const power =
+    stat +
+    rand(-10, 10);
+
+  const difficulty =
+    opponentStrength +
+    rand(-10, 10);
+
+  const success =
+    power >= difficulty * 0.85;
+
+  let goal = false;
+  let assist = false;
+
+  if (action === "shoot" && success) {
+    goal = true;
+  }
+
+  if (
+    action === "skill" &&
+    success
+  ) {
+    const skill =
+      getActivePlayer(player)?.skills[0] || "";
+
+    if (
+      skill.toLowerCase().includes("shot") ||
+      skill.toLowerCase().includes("impact") ||
+      skill.toLowerCase().includes("drive") ||
+      skill.toLowerCase().includes("finishing")
+    ) {
+      goal = Math.random() < 0.75;
+    } else {
+      assist = Math.random() < 0.5;
     }
   }
 
-  return "Common";
-}
-
-function rollCharacter() {
-  const rarity = rollRarity();
-
-  const choices = Object.entries(CHARACTERS)
-    .filter(([_, character]) =>
-      character.rarity === rarity
-    );
-
-  if (!choices.length) {
-    const all = Object.entries(CHARACTERS);
-
-    return all[random(0, all.length - 1)];
+  if (
+    action === "pass" &&
+    success
+  ) {
+    assist = Math.random() < 0.7;
   }
-
-  return choices[random(0, choices.length - 1)];
-}
-
-/* =========================================================
-   MATCH PERFORMANCE
-========================================================= */
-
-function calculateMatchPerformance(player, opponentStrength) {
-  const character = player.activeCharacter
-    ? CHARACTERS[player.activeCharacter]
-    : null;
-
-  const characterBonus = character
-    ? Math.max(0, character.rating - 75) * 0.15
-    : 0;
-
-  const power =
-    player.rating +
-    characterBonus +
-    randomFloat(-5, 5);
-
-  const opponent =
-    opponentStrength +
-    randomFloat(-5, 5);
-
-  const difference = power - opponent;
-
-  let result;
-
-  if (difference >= 12) {
-    result = "win";
-  } else if (difference <= -12) {
-    result = "loss";
-  } else {
-    const chance = Math.random();
-
-    if (chance < 0.47) result = "win";
-    else if (chance < 0.88) result = "loss";
-    else result = "draw";
-  }
-
-  let goals = 0;
-  let assists = 0;
-
-  if (result === "win") {
-    goals = random(1, 4);
-    assists = random(0, 2);
-  } else if (result === "draw") {
-    goals = random(0, 2);
-    assists = random(0, 2);
-  } else {
-    goals = random(0, 2);
-    assists = random(0, 1);
-  }
-
-  /*
-     Performance rating is based on what the player actually did.
-  */
-
-  let matchRating = 6.0;
-
-  matchRating += goals * 1.15;
-  matchRating += assists * 0.65;
-
-  if (result === "win") {
-    matchRating += 0.8;
-  } else if (result === "draw") {
-    matchRating += 0.2;
-  } else {
-    matchRating -= 0.4;
-  }
-
-  matchRating += randomFloat(-0.35, 0.35);
-
-  matchRating = Math.max(
-    4.5,
-    Math.min(10, matchRating)
-  );
-
-  matchRating = Number(matchRating.toFixed(1));
-
-  /*
-     Improvement is based on performance.
-  */
-
-  let ratingChange = 0;
-
-  if (matchRating >= 9.5) {
-    ratingChange = random(2, 3);
-  } else if (matchRating >= 8.5) {
-    ratingChange = random(1, 2);
-  } else if (matchRating >= 7.5) {
-    ratingChange = random(0, 1);
-  } else if (matchRating < 6) {
-    ratingChange = -1;
-  }
-
-  /*
-     XP / money rewards
-  */
-
-  let xp = 25 + Math.round(matchRating * 5);
-
-  if (result === "win") {
-    xp += 25;
-  }
-
-  if (goals > 0) {
-    xp += goals * 15;
-  }
-
-  if (assists > 0) {
-    xp += assists * 10;
-  }
-
-  const coins =
-    random(500, 1300) +
-    goals * 350 +
-    assists * 200 +
-    (result === "win" ? 700 : 0);
 
   return {
-    result,
-    goals,
-    assists,
-    matchRating,
-    ratingChange,
-    xp,
-    coins
+    success,
+    goal,
+    assist,
+    power
   };
 }
 
@@ -1154,246 +1070,237 @@ function calculateMatchPerformance(player, opponentStrength) {
    CLUB INTEREST
 ========================================================= */
 
-function calculateInterest(player, match) {
-  const interest = [];
+function updateClubInterest(
+  player,
+  matchRating
+) {
+  const interested = [];
 
-  for (const [clubName, club] of Object.entries(CLUBS)) {
-    if (clubName === player.club) continue;
+  for (const [club, strength] of Object.entries(CLUBS)) {
+    if (club === player.club) continue;
 
     let score = 0;
 
-    /*
-       Match performance
-    */
+    score +=
+      Math.max(
+        0,
+        matchRating - 6
+      ) * 12;
 
-    score += (match.matchRating - 5) * 8;
+    score +=
+      player.seasonStats.goals * 0.8;
 
-    score += match.goals * 7;
-    score += match.assists * 4;
+    score +=
+      player.seasonStats.assists * 0.5;
 
-    /*
-       Player rating
-    */
+    score +=
+      Math.max(
+        0,
+        player.rating - strength + 15
+      );
 
-    score += Math.max(
-      0,
-      player.rating - club.strength + 15
-    );
+    if (score >= 35) {
+      const level =
+        score >= 100
+          ? "Very High"
+          : score >= 75
+            ? "High"
+            : score >= 50
+              ? "Medium"
+              : "Low";
 
-    /*
-       Season reputation
-    */
+      player.clubInterest[club] = {
+        score,
+        level
+      };
 
-    score += Math.min(
-      20,
-      player.seasonStats.goals * 0.6
-    );
-
-    score += Math.min(
-      10,
-      player.seasonStats.assists * 0.4
-    );
-
-    /*
-       Trophies
-    */
-
-    score += player.trophies.length * 1.5;
-
-    /*
-       Better clubs require more reputation.
-    */
-
-    const requirement =
-      club.strength >= 94 ? 75 :
-      club.strength >= 90 ? 60 :
-      45;
-
-    if (score >= requirement) {
-      let level;
-
-      if (score >= 100) {
-        level = "Very High";
-      } else if (score >= 80) {
-        level = "High";
-      } else if (score >= 60) {
-        level = "Medium";
-      } else {
-        level = "Low";
-      }
-
-      interest.push({
-        club: clubName,
+      interested.push({
+        club,
         score,
         level
       });
-
-      player.clubInterest[clubName] = {
-        score,
-        level,
-        lastUpdated: Date.now()
-      };
     }
   }
 
-  interest.sort((a, b) => b.score - a.score);
+  interested.sort(
+    (a, b) => b.score - a.score
+  );
 
-  return interest.slice(0, 5);
+  return interested.slice(0, 5);
 }
 
-/* =========================================================
-   TRANSFER OFFERS
-========================================================= */
-
-function generateTransferOffers(player, interest) {
-  const newOffers = [];
+function generateOffer(
+  player,
+  interest
+) {
+  const offers = [];
 
   for (const item of interest) {
-    if (item.level !== "High" &&
-        item.level !== "Very High") {
-      continue;
-    }
+    if (
+      item.level !== "High" &&
+      item.level !== "Very High"
+    ) continue;
 
-    /*
-       Don't spam offers every match.
-    */
+    if (Math.random() > 0.3) continue;
 
-    if (Math.random() > 0.28) continue;
-
-    const club = CLUBS[item.club];
-
-    const transferFee = Math.max(
+    const fee = Math.max(
       player.transferValue,
       Math.round(
         player.transferValue *
-        randomFloat(1.0, 2.2)
-      )
-    );
-
-    const salary = Math.round(
-      Math.max(
-        10000,
-        player.rating * random(1500, 4500)
+        (1 + Math.random() * 1.5)
       )
     );
 
     const offer = {
-      id: `${Date.now()}_${random(1000, 9999)}`,
+      id:
+        `${Date.now()}-${rand(1000, 9999)}`,
       club: item.club,
-      fee: transferFee,
-      salary,
-      seasons: random(2, 5),
-      status: "pending",
-      created: Date.now()
+      fee,
+      salary:
+        Math.round(
+          player.rating *
+          rand(1000, 4000)
+        ),
+      seasons: rand(2, 5),
+      status: "pending"
     };
 
     player.offers.push(offer);
-    newOffers.push(offer);
+    offers.push(offer);
   }
 
-  return newOffers;
+  return offers;
 }
 
 /* =========================================================
-   MATCH
+   FINALIZE MATCH
 ========================================================= */
 
-async function playMatch(player, opponentName = null) {
-  const opponentClub =
-    opponentName && findClub(opponentName)
-      ? findClub(opponentName)
-      : null;
+function finishMatch(
+  player,
+  opponentStrength,
+  teamGoals,
+  teamAssists,
+  opponentGoals
+) {
+  let result;
 
-  let opponentStrength;
-
-  if (opponentClub) {
-    opponentStrength = CLUBS[opponentClub].strength;
+  if (teamGoals > opponentGoals) {
+    result = "win";
+  } else if (
+    teamGoals === opponentGoals
+  ) {
+    result = "draw";
   } else {
-    opponentStrength = random(75, 96);
+    result = "loss";
   }
 
-  const oldRating = player.rating;
-  const oldLevel = player.level;
+  let rating = 6;
 
-  const match = calculateMatchPerformance(
+  rating += teamGoals * 1.15;
+  rating += teamAssists * 0.55;
+
+  if (result === "win") rating += 0.8;
+  if (result === "draw") rating += 0.2;
+  if (result === "loss") rating -= 0.5;
+
+  rating += (Math.random() * 0.5) - 0.25;
+
+  rating = clamp(
+    Number(rating.toFixed(1)),
+    4.5,
+    10
+  );
+
+  const oldOVR = player.rating;
+
+  let improvement = 0;
+
+  if (rating >= 9.5) improvement = 2;
+  else if (rating >= 8.5) improvement = 1;
+  else if (rating < 5.5) improvement = -1;
+
+  player.rating = clamp(
+    player.rating + improvement,
+    50,
+    99
+  );
+
+  const xp =
+    30 +
+    teamGoals * 20 +
+    teamAssists * 10 +
+    (result === "win" ? 30 : 0) +
+    Math.round(rating * 5);
+
+  const coins =
+    500 +
+    teamGoals * 300 +
+    teamAssists * 150 +
+    (result === "win" ? 500 : 0);
+
+  player.coins += coins;
+
+  const levels = addXP(
     player,
-    opponentStrength
+    xp
   );
 
   player.stats.matches++;
   player.stats.appearances++;
 
-  player.stats.goals += match.goals;
-  player.stats.assists += match.assists;
+  player.stats.goals += teamGoals;
+  player.stats.assists += teamAssists;
 
-  player.seasonStats.appearances++;
-  player.seasonStats.goals += match.goals;
-  player.seasonStats.assists += match.assists;
-  player.seasonStats.ratingSum += match.matchRating;
+  player.seasonStats.matches++;
+  player.seasonStats.goals += teamGoals;
+  player.seasonStats.assists += teamAssists;
+  player.seasonStats.ratingSum += rating;
 
-  if (match.result === "win") {
+  if (result === "win") {
     player.stats.wins++;
     player.seasonStats.wins++;
   }
 
-  if (match.result === "draw") {
+  if (result === "draw") {
     player.stats.draws++;
   }
 
-  if (match.result === "loss") {
+  if (result === "loss") {
     player.stats.losses++;
     player.seasonStats.losses++;
   }
-
-  player.rating = Math.max(
-    50,
-    Math.min(
-      99,
-      player.rating + match.ratingChange
-    )
-  );
-
-  player.coins += match.coins;
-
-  const levels = addXP(player, match.xp);
 
   player.transferValue = Math.max(
     100000,
     Math.round(
       player.transferValue *
-      (1 + Math.max(-0.03, match.ratingChange * 0.025))
+      (1 + improvement * 0.04)
     )
   );
 
-  const interest = calculateInterest(
-    player,
-    match
-  );
+  const interest =
+    updateClubInterest(
+      player,
+      rating
+    );
 
-  const offers = generateTransferOffers(
-    player,
-    interest
-  );
-
-  player.history.push({
-    type: "match",
-    season: db.seasons.current,
-    result: match.result,
-    goals: match.goals,
-    assists: match.assists,
-    rating: match.matchRating,
-    ratingChange: match.ratingChange,
-    timestamp: Date.now()
-  });
+  const offers =
+    generateOffer(
+      player,
+      interest
+    );
 
   saveDB();
 
   return {
-    match,
-    oldRating,
-    newRating: player.rating,
-    oldLevel,
-    newLevel: player.level,
+    result,
+    rating,
+    oldOVR,
+    newOVR: player.rating,
+    improvement,
+    xp,
+    coins,
     levels,
     interest,
     offers
@@ -1401,1528 +1308,1279 @@ async function playMatch(player, opponentName = null) {
 }
 
 /* =========================================================
-   TROPHY
+   MATCH COMMAND
 ========================================================= */
 
-function giveTrophy(player, trophy) {
-  if (!player.trophies.includes(trophy)) {
-    player.trophies.push(trophy);
-    return true;
+async function startMatch(
+  message,
+  player
+) {
+  if (!getActivePlayer(player)) {
+    return message.reply(
+      "You need to equip a player first with `,setplayer <name>`."
+    );
   }
 
-  return false;
-}
+  if (player.stamina < 30) {
+    return message.reply(
+      "You are too tired. Train/rest until your stamina recovers."
+    );
+  }
 
-/* =========================================================
-   SEASON
-========================================================= */
+  player.stamina -= 30;
 
-function startNewSeason() {
-  const previous = db.seasons.current;
+  const opponentClubNames =
+    Object.keys(CLUBS);
 
-  db.seasons.history.push({
-    season: previous,
-    completedAt: Date.now()
-  });
+  const opponent =
+    opponentClubNames[
+      rand(0, opponentClubNames.length - 1)
+    ];
 
-  db.seasons.current++;
+  const opponentStrength =
+    CLUBS[opponent];
 
-  for (const player of Object.values(db.users)) {
-    player.seasonStats = {
-      appearances: 0,
-      goals: 0,
-      assists: 0,
-      wins: 0,
-      losses: 0,
-      ratingSum: 0
-    };
+  let yourGoals = 0;
+  let yourAssists = 0;
 
-    player.clubInterest = {};
+  let opponentGoals =
+    rand(0, 3);
 
-    for (const offer of player.offers) {
-      if (offer.status === "pending") {
-        offer.status = "expired";
+  const active =
+    getActivePlayer(player);
+
+  const embed =
+    new EmbedBuilder()
+      .setTitle(
+        `⚽ MATCH — ${player.club} vs ${opponent}`
+      )
+      .setDescription(
+        [
+          `**Your Player:** ${active.name}`,
+          `**OVR:** ${active.rating}`,
+          "",
+          `Your Team: **0**`,
+          `Opponent: **${opponentGoals}**`,
+          "",
+          "🔥 **CHANCE CREATED!**",
+          "",
+          "Choose your action below."
+        ].join("\n")
+      );
+
+  const msg =
+    await message.reply({
+      embeds: [embed],
+      components: [
+        matchButtonRow(player)
+      ]
+    });
+
+  const collector =
+    msg.createMessageComponentCollector({
+      componentType:
+        ComponentType.Button,
+      time: 60000
+    });
+
+  let chances = 0;
+
+  collector.on(
+    "collect",
+    async interaction => {
+      if (
+        interaction.user.id !==
+        message.author.id
+      ) {
+        return interaction.reply({
+          content:
+            "This isn't your match.",
+          ephemeral: true
+        });
+      }
+
+      const action =
+        interaction.customId;
+
+      chances++;
+
+      if (action === "skill") {
+        const skills =
+          active.skills;
+
+        const skill =
+          skills[
+            rand(0, skills.length - 1)
+          ];
+
+        const result =
+          performAction(
+            player,
+            "skill",
+            {},
+            opponentStrength
+          );
+
+        player.stamina =
+          clamp(
+            player.stamina - 10,
+            0,
+            100
+          );
+
+        if (result.goal) {
+          yourGoals++;
+        }
+
+        if (result.assist) {
+          yourAssists++;
+        }
+
+        await interaction.update({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle(
+                `⚡ ${skill}`
+              )
+              .setDescription(
+                [
+                  result.success
+                    ? `**${skill} succeeded!**`
+                    : `**${skill} failed!**`,
+                  "",
+                  result.goal
+                    ? "⚽ **GOAL!**"
+                    : result.assist
+                      ? "🅰️ **ASSIST!**"
+                      : "The play didn't produce a goal.",
+                  "",
+                  `Score: **${yourGoals} - ${opponentGoals}**`,
+                  `Stamina: **${player.stamina}/100**`,
+                  `Chances used: **${chances}/3**`
+                ].join("\n")
+              )
+          ],
+          components:
+            chances >= 3
+              ? []
+              : [matchButtonRow(player)]
+        });
+
+      } else {
+        const result =
+          performAction(
+            player,
+            action,
+            {},
+            opponentStrength
+          );
+
+        player.stamina =
+          clamp(
+            player.stamina - 5,
+            0,
+            100
+          );
+
+        if (result.goal) {
+          yourGoals++;
+        }
+
+        if (result.assist) {
+          yourAssists++;
+        }
+
+        await interaction.update({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle(
+                `⚽ Match — Chance ${chances}/3`
+              )
+              .setDescription(
+                [
+                  result.success
+                    ? `Your **${action}** succeeded.`
+                    : `Your **${action}** failed.`,
+                  "",
+                  result.goal
+                    ? "⚽ **GOAL!**"
+                    : result.assist
+                      ? "🅰️ **ASSIST!**"
+                      : "No direct contribution.",
+                  "",
+                  `Score: **${yourGoals} - ${opponentGoals}**`,
+                  `Stamina: **${player.stamina}/100**`
+                ].join("\n")
+              )
+          ],
+          components:
+            chances >= 3
+              ? []
+              : [matchButtonRow(player)]
+        });
+      }
+
+      if (chances >= 3) {
+        collector.stop("finished");
       }
     }
+  );
 
-    player.contract.expires =
-      Math.max(
-        player.contract.expires,
-        db.seasons.current
-      );
-  }
+  collector.on(
+    "end",
+    async () => {
+      if (chances === 0) {
+        return;
+      }
 
-  saveDB();
+      const final =
+        finishMatch(
+          player,
+          opponentStrength,
+          yourGoals,
+          yourAssists,
+          opponentGoals
+        );
 
-  return db.seasons.current;
-}
+      const resultText =
+        final.result === "win"
+          ? "🏆 VICTORY"
+          : final.result === "draw"
+            ? "🤝 DRAW"
+            : "❌ DEFEAT";
 
-/* =========================================================
-   EMBED
-========================================================= */
+      const interestText =
+        final.interest.length
+          ? final.interest
+              .map(
+                x =>
+                  `• **${x.club}** — ${x.level}`
+              )
+              .join("\n")
+          : "No new clubs yet.";
 
-function makeEmbed(title, description) {
-  return new EmbedBuilder()
-    .setTitle(title)
-    .setDescription(description)
-    .setTimestamp();
-}
+      let description = [
+        `## ${resultText}`,
+        "",
+        `**${player.club}** ${yourGoals} - ${opponentGoals} **${opponent}**`,
+        "",
+        `⚽ Goals: **${yourGoals}**`,
+        `🅰️ Assists: **${yourAssists}**`,
+        `⭐ Match Rating: **${final.rating}**`,
+        "",
+        `📈 OVR: **${final.oldOVR} → ${final.newOVR}**`,
+        `Improvement: **${final.improvement >= 0 ? "+" : ""}${final.improvement} OVR**`,
+        "",
+        `✨ XP: **+${final.xp}**`,
+        `💰 Coins: **+${money(final.coins)}**`,
+        `🔋 Stamina: **${player.stamina}/100**`,
+        "",
+        "## 👀 Club Interest",
+        interestText
+      ];
 
-/* =========================================================
-   RESPONSE
-========================================================= */
+      if (final.offers.length) {
+        description.push(
+          "",
+          "## 📨 Transfer Offer"
+        );
 
-async function respond(context, payload) {
-  if (context.isInteraction) {
-    if (context.replied || context.deferred) {
-      return context.followUp(payload);
+        for (const offer of final.offers) {
+          description.push(
+            `**${offer.club}** — ¥${money(offer.fee)}`
+          );
+        }
+
+        description.push(
+          "",
+          "Use `,offers` to view your offers."
+        );
+      }
+
+      if (final.levels > 0) {
+        description.push(
+          "",
+          `🎉 **LEVEL UP!** +${final.levels}`
+        );
+      }
+
+      await msg.edit({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle(
+              `Match Finished — Season ${db.season}`
+            )
+            .setDescription(
+              description.join("\n")
+            )
+        ],
+        components: []
+      }).catch(() => {});
     }
-
-    return context.reply(payload);
-  }
-
-  return context.reply(payload);
+  );
 }
 
 /* =========================================================
-   COMMAND EXECUTION
+   COMMAND HANDLER
 ========================================================= */
 
-async function executeCommand(command, args, context) {
-  const isInteraction = context.isInteraction;
+async function command(
+  name,
+  args,
+  message
+) {
+  const player =
+    getUser(message.author.id);
 
-  const user = isInteraction
-    ? context.user
-    : context.author;
+  /* PROFILE */
 
-  const player = getUser(user.id);
+  if (name === "profile") {
+    const active =
+      getActivePlayer(player);
 
-  /* =======================================================
-     PROFILE
-  ======================================================= */
-
-  if (command === "profile") {
-    let target = user;
-
-    if (isInteraction) {
-      target =
-        context.options.getUser("user") ||
-        user;
-    }
-
-    const targetPlayer = getUser(target.id);
-
-    const character =
-      targetPlayer.activeCharacter
-        ? CHARACTERS[targetPlayer.activeCharacter]
-        : null;
-
-    return respond(context, {
+    return message.reply({
       embeds: [
-        makeEmbed(
-          `${target.username}'s Career`,
-          [
-            `**Season:** ${db.seasons.current}`,
-            `**Level:** ${targetPlayer.level}`,
-            `**XP:** ${targetPlayer.xp}/${xpRequired(targetPlayer.level)}`,
-            `**OVR:** ${targetPlayer.rating}`,
-            `**Position:** ${targetPlayer.position}`,
-            `**Career:** ${targetPlayer.career}`,
-            `**Country:** ${targetPlayer.country}`,
-            `**Club:** ${targetPlayer.club}`,
-            `**Transfer Value:** ¥${formatNumber(targetPlayer.transferValue)}`,
-            "",
-            `**Character:** ${character ? character.name : "None"}`,
-            "",
-            `⚽ Goals: ${targetPlayer.stats.goals}`,
-            `🅰️ Assists: ${targetPlayer.stats.assists}`,
-            `🎮 Matches: ${targetPlayer.stats.matches}`,
-            `🏆 Trophies: ${targetPlayer.trophies.length}`
-          ].join("\n")
-        )
+        new EmbedBuilder()
+          .setTitle(
+            `${message.author.username}'s Career`
+          )
+          .setDescription(
+            [
+              `**Season:** ${db.season}`,
+              `**Level:** ${player.level}`,
+              `**XP:** ${player.xp}/${xpNeeded(player.level)}`,
+              `**OVR:** ${player.rating}`,
+              `**Position:** ${player.position}`,
+              `**Country:** ${player.country}`,
+              `**Club:** ${player.club}`,
+              `**Career:** ${player.career}`,
+              `**Transfer Value:** ¥${money(player.transferValue)}`,
+              "",
+              `**Player:** ${active?.name || "None"}`,
+              "",
+              `⚽ Goals: ${player.stats.goals}`,
+              `🅰️ Assists: ${player.stats.assists}`,
+              `🎮 Matches: ${player.stats.matches}`,
+              `🏆 Trophies: ${player.trophies.length}`
+            ].join("\n")
+          )
       ]
     });
   }
 
-  /* =======================================================
-     ROLL
-  ======================================================= */
+  /* ROLL */
 
-  if (command === "roll") {
-    if (onCooldown(player, "roll", 15)) {
-      return respond(
-        context,
-        `You can roll again in **${cooldownRemaining(player, "roll", 15)}s**.`
-      );
+  if (name === "roll") {
+    const weights = {
+      Common: 50,
+      Uncommon: 25,
+      Rare: 13,
+      Epic: 7,
+      Legendary: 3.5,
+      Mythic: 1.2,
+      Secret: 0.3
+    };
+
+    let roll =
+      Math.random() * 100;
+
+    let rarity = "Common";
+
+    for (const [r, chance] of Object.entries(weights)) {
+      if (roll <= chance) {
+        rarity = r;
+        break;
+      }
+
+      roll -= chance;
     }
 
-    useCooldown(player, "roll");
+    const choices =
+      Object.entries(PLAYERS)
+        .filter(
+          ([_, p]) =>
+            p.rarity === rarity
+        );
 
-    const [id, character] = rollCharacter();
+    const [id, rolled] =
+      choices.length
+        ? choices[rand(0, choices.length - 1)]
+        : Object.entries(PLAYERS)[
+            rand(
+              0,
+              Object.keys(PLAYERS).length - 1
+            )
+          ];
 
     const duplicate =
-      player.characters.includes(id);
+      player.players.includes(id);
 
     if (!duplicate) {
-      player.characters.push(id);
+      player.players.push(id);
     } else {
       player.coins += 1000;
     }
 
     saveDB();
 
-    return respond(context, {
+    return message.reply({
       embeds: [
-        makeEmbed(
-          "Character Roll",
-          [
-            `**${character.name}**`,
-            "",
-            `Rarity: **${character.rarity}**`,
-            `Rating: **${character.rating}**`,
-            `Position: **${character.position}**`,
-            `Country: **${character.country}**`,
-            `Club: **${character.club}**`,
-            "",
-            duplicate
-              ? "Duplicate → **+1,000 coins**"
-              : "New character added to your collection."
-          ].join("\n")
-        )
+        new EmbedBuilder()
+          .setTitle("🎰 CHARACTER ROLL")
+          .setDescription(
+            [
+              `# ${rolled.name}`,
+              "",
+              `**Rarity:** ${rolled.rarity}`,
+              `**OVR:** ${rolled.rating}`,
+              `**Position:** ${rolled.position}`,
+              `**Country:** ${rolled.country}`,
+              `**Club:** ${rolled.club}`,
+              "",
+              "**Skills**",
+              rolled.skills
+                .map(x => `• ${x}`)
+                .join("\n"),
+              "",
+              duplicate
+                ? "Duplicate → **+1,000 coins**"
+                : "✨ Added to your collection!"
+            ].join("\n")
+          )
       ]
     });
   }
 
-  /* =======================================================
-     CHARACTERS
-  ======================================================= */
+  /* CHARACTER */
 
-  if (command === "characters") {
-    if (!player.characters.length) {
-      return respond(
-        context,
-        "You don't have any characters yet. Use `,roll`."
-      );
-    }
+  if (name === "character" ||
+      name === "player") {
+    const input =
+      args.join(" ");
 
-    const list = player.characters
-      .map(id => {
-        const c = CHARACTERS[id];
-
-        return c
-          ? `**${c.name}** — ${c.rarity} — ${c.rating} OVR`
-          : id;
-      })
-      .join("\n");
-
-    return respond(context, {
-      embeds: [
-        makeEmbed(
-          `${user.username}'s Characters`,
-          list
-        )
-      ]
-    });
-  }
-
-  /* =======================================================
-     CHARACTER
-  ======================================================= */
-
-  if (command === "character") {
-    const input = isInteraction
-      ? context.options.getString("name")
-      : args.join(" ");
-
-    const id = findCharacter(input);
+    const id =
+      findPlayer(input);
 
     if (!id) {
-      return respond(
-        context,
-        "I couldn't find that character."
+      return message.reply(
+        "I couldn't find that player. Try their first name, surname, or nickname."
       );
     }
 
-    const c = CHARACTERS[id];
+    const p =
+      PLAYERS[id];
 
-    return respond(context, {
+    return message.reply({
       embeds: [
-        makeEmbed(
-          c.name,
-          [
-            `**Rarity:** ${c.rarity}`,
-            `**OVR:** ${c.rating}`,
-            `**Position:** ${c.position}`,
-            `**Country:** ${c.country}`,
-            `**Club:** ${c.club}`,
-            "",
-            "**Abilities**",
-            ...c.skills.map(
-              (skill, i) => `${i + 1}. ${skill}`
-            )
-          ].join("\n")
-        )
+        new EmbedBuilder()
+          .setTitle(
+            `⚽ ${p.name}`
+          )
+          .setDescription(
+            [
+              `**OVR:** ${p.rating}`,
+              `**Rarity:** ${p.rarity}`,
+              `**Position:** ${p.position}`,
+              `**Country:** ${p.country}`,
+              `**Club:** ${p.club}`,
+              "",
+              "## Skills",
+              p.skills
+                .map(
+                  (x, i) =>
+                    `**${i + 1}.** ${x}`
+                )
+                .join("\n")
+            ].join("\n")
+          )
       ]
     });
   }
 
-  /* =======================================================
-     SET CHARACTER
-  ======================================================= */
+  /* PLAYERS */
 
-  if (command === "setcharacter") {
-    const input = isInteraction
-      ? context.options.getString("name")
-      : args.join(" ");
+  if (name === "players" ||
+      name === "characters") {
+    if (!player.players.length) {
+      return message.reply(
+        "You don't own any players yet. Use `,roll`."
+      );
+    }
 
-    const id = findCharacter(input);
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle(
+            `${message.author.username}'s Players`
+          )
+          .setDescription(
+            player.players
+              .map(id => {
+                const p =
+                  PLAYERS[id];
+
+                return p
+                  ? `• **${p.name}** — ${p.rating} OVR — ${p.rarity}`
+                  : id;
+              })
+              .join("\n")
+          )
+      ]
+    });
+  }
+
+  /* SET PLAYER */
+
+  if (name === "setplayer" ||
+      name === "setcharacter") {
+    const id =
+      findPlayer(args.join(" "));
 
     if (!id) {
-      return respond(
-        context,
-        "I couldn't find that character."
+      return message.reply(
+        "Player not found."
       );
     }
 
-    if (!player.characters.includes(id)) {
-      return respond(
-        context,
-        `You don't own **${CHARACTERS[id].name}**.`
+    if (
+      !player.players.includes(id)
+    ) {
+      return message.reply(
+        `You don't own **${PLAYERS[id].name}**.`
       );
     }
 
-    player.activeCharacter = id;
+    player.activePlayer = id;
+
+    const active =
+      PLAYERS[id];
+
+    player.position =
+      active.position;
 
     saveDB();
 
-    return respond(
-      context,
-      `Equipped **${CHARACTERS[id].name}**.`
+    return message.reply(
+      `⚽ Equipped **${active.name}**.`
     );
   }
 
-  /* =======================================================
-     STATS
-  ======================================================= */
+  /* MATCH */
 
-  if (command === "stats") {
-    const averageRating =
-      player.seasonStats.appearances
-        ? (
-            player.seasonStats.ratingSum /
-            player.seasonStats.appearances
-          ).toFixed(1)
-        : "N/A";
-
-    return respond(context, {
-      embeds: [
-        makeEmbed(
-          "Career Statistics",
-          [
-            `**Matches:** ${player.stats.matches}`,
-            `**Appearances:** ${player.stats.appearances}`,
-            `**Goals:** ${player.stats.goals}`,
-            `**Assists:** ${player.stats.assists}`,
-            `**Wins:** ${player.stats.wins}`,
-            `**Draws:** ${player.stats.draws}`,
-            `**Losses:** ${player.stats.losses}`,
-            "",
-            `**Season ${db.seasons.current}**`,
-            `Goals: ${player.seasonStats.goals}`,
-            `Assists: ${player.seasonStats.assists}`,
-            `Appearances: ${player.seasonStats.appearances}`,
-            `Average Rating: ${averageRating}`
-          ].join("\n")
-        )
-      ]
-    });
-  }
-
-  /* =======================================================
-     BALANCE
-  ======================================================= */
-
-  if (command === "balance") {
-    return respond(
-      context,
-      `**Coins:** ${formatNumber(player.coins)}\n**Gems:** ${formatNumber(player.gems)}`
+  if (name === "match" ||
+      name === "play") {
+    return startMatch(
+      message,
+      player
     );
   }
 
-  /* =======================================================
-     CLUBS
-  ======================================================= */
+  /* TRAIN */
 
-  if (command === "clubs") {
-    const list = Object.entries(CLUBS)
-      .map(
-        ([name, data]) =>
-          `**${name}** — ${data.strength} OVR — ${LEAGUES[data.league]?.name || data.league}`
-      )
-      .join("\n");
+  if (name === "train" ||
+      name === "training") {
+    const type =
+      normalize(args[0]);
 
-    return respond(context, {
-      embeds: [
-        makeEmbed(
-          "Available Clubs",
-          list
-        )
-      ]
-    });
-  }
-
-  /* =======================================================
-     LEAGUES
-  ======================================================= */
-
-  if (command === "leagues") {
-    const list = Object.entries(LEAGUES)
-      .map(
-        ([_, league]) =>
-          `**${league.name}** — ${league.country}`
-      )
-      .join("\n");
-
-    return respond(context, {
-      embeds: [
-        makeEmbed(
-          "Competitions",
-          list
-        )
-      ]
-    });
-  }
-
-  /* =======================================================
-     COUNTRIES
-  ======================================================= */
-
-  if (command === "countries") {
-    return respond(
-      context,
-      COUNTRIES.map(x => `• ${x}`).join("\n")
-    );
-  }
-
-  /* =======================================================
-     CAREER
-  ======================================================= */
-
-  if (command === "career") {
-    return respond(context, {
-      embeds: [
-        makeEmbed(
-          "Career",
-          [
-            `**Career Level:** ${player.career}`,
-            `**OVR:** ${player.rating}`,
-            `**Level:** ${player.level}`,
-            `**Club:** ${player.club}`,
-            `**Country:** ${player.country}`,
-            `**Transfer Value:** ¥${formatNumber(player.transferValue)}`,
-            `**Contract Until:** Season ${player.contract.expires}`
-          ].join("\n")
-        )
-      ]
-    });
-  }
-
-  /* =======================================================
-     TROPHIES
-  ======================================================= */
-
-  if (command === "trophies") {
-    if (!player.trophies.length) {
-      return respond(
-        context,
-        "Your trophy cabinet is empty."
-      );
-    }
-
-    return respond(context, {
-      embeds: [
-        makeEmbed(
-          "Trophy Cabinet",
-          player.trophies
-            .map(x => `🏆 **${x}**`)
-            .join("\n")
-        )
-      ]
-    });
-  }
-
-  /* =======================================================
-     MATCH
-  ======================================================= */
-
-  if (command === "match") {
-    if (onCooldown(player, "match", 10)) {
-      return respond(
-        context,
-        `You can play again in **${cooldownRemaining(player, "match", 10)}s**.`
-      );
-    }
-
-    useCooldown(player, "match");
-
-    const opponentInput = isInteraction
-      ? context.options?.getString?.("opponent")
-      : args.join(" ");
-
-    const result = await playMatch(
-      player,
-      opponentInput || null
-    );
-
-    const match = result.match;
-
-    const resultText =
-      match.result === "win"
-        ? "VICTORY"
-        : match.result === "draw"
-          ? "DRAW"
-          : "DEFEAT";
-
-    let description = [
-      `## ${resultText}`,
-      "",
-      `⚽ **Goals:** ${match.goals}`,
-      `🅰️ **Assists:** ${match.assists}`,
-      `⭐ **Match Rating:** ${match.matchRating}`,
-      "",
-      `📈 **OVR:** ${result.oldRating} → ${result.newRating}`,
-      `${match.ratingChange >= 0 ? "+" : ""}${match.ratingChange} OVR`,
-      "",
-      `✨ **XP:** +${match.xp}`,
-      `💰 **Coins:** +${formatNumber(match.coins)}`
-    ];
-
-    if (result.newLevel > result.oldLevel) {
-      description.push(
-        "",
-        `🎉 **LEVEL UP!**`,
-        `Level ${result.oldLevel} → ${result.newLevel}`
-      );
-    }
-
-    if (result.interest.length) {
-      description.push(
-        "",
-        "## Club Interest"
-      );
-
-      for (const item of result.interest) {
-        description.push(
-          `• **${item.club}** — ${item.level}`
-        );
-      }
-    }
-
-    if (result.offers.length) {
-      description.push(
-        "",
-        "## New Transfer Offer"
-      );
-
-      for (const offer of result.offers) {
-        description.push(
-          `📨 **${offer.club}** — ¥${formatNumber(offer.fee)}`
-        );
-      }
-
-      description.push(
-        "",
-        "Use `,offers` to view your offers."
-      );
-    }
-
-    return respond(context, {
-      embeds: [
-        makeEmbed(
-          `Match Report — Season ${db.seasons.current}`,
-          description.join("\n")
-        )
-      ]
-    });
-  }
-
-  /* =======================================================
-     INTEREST
-  ======================================================= */
-
-  if (command === "interest") {
-    const entries = Object.entries(
-      player.clubInterest
-    )
-      .sort(
-        ([_, a], [__, b]) =>
-          b.score - a.score
-      )
-      .slice(0, 10);
-
-    if (!entries.length) {
-      return respond(
-        context,
-        "No clubs are currently interested in you. Keep performing well."
-      );
-    }
-
-    return respond(context, {
-      embeds: [
-        makeEmbed(
-          "Club Interest",
-          entries
-            .map(
-              ([club, data]) =>
-                `**${club}** — ${data.level}`
-            )
-            .join("\n")
-        )
-      ]
-    });
-  }
-
-  /* =======================================================
-     OFFERS
-  ======================================================= */
-
-  if (command === "offers") {
-    const offers = player.offers.filter(
-      x => x.status === "pending"
-    );
-
-    if (!offers.length) {
-      return respond(
-        context,
-        "You don't have any pending transfer offers."
-      );
-    }
-
-    const list = offers
-      .map(
-        offer =>
-          `**${offer.id}**\n` +
-          `Club: **${offer.club}**\n` +
-          `Fee: **¥${formatNumber(offer.fee)}**\n` +
-          `Salary: **¥${formatNumber(offer.salary)}**\n` +
-          `Contract: **${offer.seasons} seasons**`
-      )
-      .join("\n\n");
-
-    return respond(context, {
-      embeds: [
-        makeEmbed(
-          "Transfer Offers",
-          list +
-            "\n\nAccept with `,acceptoffer <ID>`"
-        )
-      ]
-    });
-  }
-
-  /* =======================================================
-     ACCEPT OFFER
-  ======================================================= */
-
-  if (command === "acceptoffer") {
-    const id = isInteraction
-      ? context.options.getString("id")
-      : args[0];
-
-    const offer = player.offers.find(
-      x =>
-        x.id === id &&
-        x.status === "pending"
-    );
-
-    if (!offer) {
-      return respond(
-        context,
-        "That transfer offer doesn't exist or has expired."
-      );
-    }
-
-    player.club = offer.club;
-
-    player.contract = {
-      club: offer.club,
-      expires: db.seasons.current + offer.seasons
-    };
-
-    player.transferValue = Math.max(
-      player.transferValue,
-      offer.fee
-    );
-
-    offer.status = "accepted";
-
-    player.history.push({
-      type: "transfer",
-      from: player.club,
-      to: offer.club,
-      season: db.seasons.current,
-      timestamp: Date.now()
-    });
-
-    saveDB();
-
-    return respond(
-      context,
-      `Transfer accepted.\n\nYou are now playing for **${offer.club}**.`
-    );
-  }
-
-  /* =======================================================
-     TRANSFER MANUALLY
-  ======================================================= */
-
-  if (command === "transfer") {
-    const input = isInteraction
-      ? context.options.getString("club")
-      : args.join(" ");
-
-    const club = findClub(input);
-
-    if (!club) {
-      return respond(
-        context,
-        "I couldn't find that club."
-      );
-    }
-
-    const data = CLUBS[club];
-
-    if (club === player.club) {
-      return respond(
-        context,
-        `You're already at **${club}**.`
-      );
-    }
-
-    if (player.rating + 5 < data.strength) {
-      return respond(
-        context,
+    if (!TRAINING[type]) {
+      return message.reply(
         [
-          `**${club}** isn't currently willing to sign you.`,
+          "**Training Types**",
           "",
-          `Your OVR: **${player.rating}**`,
-          `Club level: **${data.strength}**`,
-          "",
-          "Keep performing well to attract them."
+          "`,train shooting`",
+          "`,train passing`",
+          "`,train dribbling`",
+          "`,train speed`",
+          "`,train defense`",
+          "`,train physical`",
+          "`,train vision`"
         ].join("\n")
       );
     }
 
-    const oldClub = player.club;
+    const result =
+      train(
+        player,
+        type
+      );
 
-    player.club = club;
-
-    player.contract = {
-      club,
-      expires: db.seasons.current + random(2, 4)
-    };
-
-    player.transferValue += random(
-      500000,
-      5000000
-    );
-
-    player.history.push({
-      type: "transfer",
-      from: oldClub,
-      to: club,
-      season: db.seasons.current,
-      timestamp: Date.now()
-    });
-
-    saveDB();
-
-    return respond(
-      context,
-      `Transfer completed.\n\n**${oldClub}** → **${club}**`
-    );
-  }
-
-  /* =======================================================
-     LEAGUE
-  ======================================================= */
-
-  if (command === "league") {
-    const input = isInteraction
-      ? context.options.getString("name")
-      : args.join(" ");
-
-    const league = findLeague(input);
-
-    if (!league) {
-      return respond(
-        context,
-        "I couldn't find that competition."
+    if (!result.success) {
+      return message.reply(
+        result.message
       );
     }
 
-    if (league === "UCL") {
-      return respond(context, {
-        embeds: [
-          makeEmbed(
-            "UEFA Champions League",
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle(
+            `🏋️ ${result.training.name} Training`
+          )
+          .setDescription(
             [
-              "**Competition Structure**",
+              `**${result.training.name}:** ${result.old} → ${result.newValue}`,
+              `**Improvement:** +${result.increase}`,
               "",
-              "• League/Group Stage",
-              "• Knockout Stage",
-              "• Round of 16",
-              "• Quarter-Finals",
-              "• Semi-Finals",
-              "• Final",
+              `⭐ OVR: ${result.oldOVR} → ${result.newOVR}`,
+              `✨ XP: +${result.xp}`,
+              `🔋 Stamina: ${player.stamina}/100`,
+              result.levels
+                ? `🎉 Level Up: +${result.levels}`
+                : ""
+            ]
+              .filter(Boolean)
+              .join("\n")
+          )
+      ]
+    });
+  }
+
+  /* ATTRIBUTES */
+
+  if (name === "attributes" ||
+      name === "stats") {
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("📊 Player Attributes")
+          .setDescription(
+            [
+              `**OVR:** ${player.rating}`,
+              `**Shooting:** ${player.attributes.shooting}`,
+              `**Passing:** ${player.attributes.passing}`,
+              `**Dribbling:** ${player.attributes.dribbling}`,
+              `**Speed:** ${player.attributes.speed}`,
+              `**Defense:** ${player.attributes.defense}`,
+              `**Physical:** ${player.attributes.physical}`,
+              `**Vision:** ${player.attributes.vision}`,
               "",
-              "🏆 Winner receives the UCL trophy."
+              `🔋 **Stamina:** ${player.stamina}/100`
             ].join("\n")
           )
-        ]
-      });
+      ]
+    });
+  }
+
+  /* REST */
+
+  if (name === "rest") {
+    player.stamina =
+      clamp(
+        player.stamina + 30,
+        0,
+        100
+      );
+
+    saveDB();
+
+    return message.reply(
+      `🔋 You rested. Stamina: **${player.stamina}/100**`
+    );
+  }
+
+  /* INTEREST */
+
+  if (name === "interest") {
+    const list =
+      Object.entries(
+        player.clubInterest
+      )
+        .sort(
+          ([_, a], [__, b]) =>
+            b.score - a.score
+        )
+        .slice(0, 10);
+
+    if (!list.length) {
+      return message.reply(
+        "No clubs are interested yet. Perform well in matches."
+      );
     }
 
-    if (league === "WorldCup") {
-      return respond(context, {
-        embeds: [
-          makeEmbed(
-            "World Cup",
-            "International tournament for national teams.\n\n🏆 Winner receives the World Cup."
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("👀 Club Interest")
+          .setDescription(
+            list
+              .map(
+                ([club, data]) =>
+                  `• **${club}** — ${data.level}`
+              )
+              .join("\n")
           )
-        ]
-      });
-    }
-
-    const clubs = Object.entries(CLUBS)
-      .filter(
-        ([_, club]) =>
-          club.league === league
-      )
-      .map(([name, club]) => ({
-        name,
-        strength: club.strength,
-        points: random(15, 30)
-      }))
-      .sort((a, b) => b.points - a.points);
-
-    const table = clubs
-      .map(
-        (club, index) =>
-          `**${index + 1}. ${club.name}** — ${club.points} pts`
-      )
-      .join("\n");
-
-    return respond(context, {
-      embeds: [
-        makeEmbed(
-          `${LEAGUES[league].name} — Season ${db.seasons.current}`,
-          table || "No clubs available."
-        )
       ]
     });
   }
 
-  /* =======================================================
-     SEASON
-  ======================================================= */
+  /* OFFERS */
 
-  if (command === "season") {
-    return respond(context, {
-      embeds: [
-        makeEmbed(
-          `Season ${db.seasons.current}`,
-          [
-            "**Competitions**",
-            "• Domestic Leagues",
-            "• UEFA Champions League",
-            "• Continental Cups",
-            "• World Cup",
-            "",
-            "**Individual Awards**",
-            "• Ballon d'Or",
-            "• Golden Boot",
-            "• Golden Glove",
-            "• Season MVP",
-            "",
-            `Completed Seasons: **${db.seasons.history.length}**`
-          ].join("\n")
-        )
-      ]
-    });
-  }
+  if (name === "offers") {
+    const offers =
+      player.offers.filter(
+        x => x.status === "pending"
+      );
 
-  /* =======================================================
-     DAILY
-  ======================================================= */
-
-  if (command === "daily") {
-    if (onCooldown(player, "daily", 86400)) {
-      return respond(
-        context,
-        `Daily reward available in **${cooldownRemaining(player, "daily", 86400)}s**.`
+    if (!offers.length) {
+      return message.reply(
+        "You have no transfer offers."
       );
     }
 
-    useCooldown(player, "daily");
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("📨 Transfer Offers")
+          .setDescription(
+            offers
+              .map(
+                offer =>
+                  [
+                    `**${offer.club}**`,
+                    `ID: \`${offer.id}\``,
+                    `Fee: ¥${money(offer.fee)}`,
+                    `Salary: ¥${money(offer.salary)}`,
+                    `Contract: ${offer.seasons} seasons`
+                  ].join("\n")
+              )
+              .join("\n\n")
+          )
+      ]
+    });
+  }
 
-    const coins = random(1000, 3000);
-    const gems = random(5, 20);
+  /* ACCEPT OFFER */
 
-    player.coins += coins;
-    player.gems += gems;
+  if (name === "acceptoffer") {
+    const id =
+      args[0];
+
+    const offer =
+      player.offers.find(
+        x =>
+          x.id === id &&
+          x.status === "pending"
+      );
+
+    if (!offer) {
+      return message.reply(
+        "Offer not found."
+      );
+    }
+
+    const oldClub =
+      player.club;
+
+    player.club =
+      offer.club;
+
+    player.transferValue =
+      Math.max(
+        player.transferValue,
+        offer.fee
+      );
+
+    offer.status =
+      "accepted";
 
     saveDB();
 
-    return respond(
-      context,
-      `Daily reward:\n\n**+${formatNumber(coins)} coins**\n**+${gems} gems**`
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("✅ TRANSFER COMPLETED")
+          .setDescription(
+            [
+              `**${oldClub}** → **${offer.club}**`,
+              "",
+              `Transfer Fee: ¥${money(offer.fee)}`,
+              `Salary: ¥${money(offer.salary)}`,
+              `Contract: ${offer.seasons} seasons`
+            ].join("\n")
+          )
+      ]
+    });
+  }
+
+  /* CLUB */
+
+  if (name === "club") {
+    const input =
+      args.join(" ");
+
+    const club =
+      findClub(input);
+
+    if (!club) {
+      return message.reply(
+        "Club not found."
+      );
+    }
+
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle(`🏟️ ${club}`)
+          .setDescription(
+            [
+              `**Club OVR:** ${CLUBS[club]}`,
+              "",
+              `Your OVR: **${player.rating}**`,
+              `Your Current Club: **${player.club}**`
+            ].join("\n")
+          )
+      ]
+    });
+  }
+
+  /* TRANSFER */
+
+  if (name === "transfer") {
+    const club =
+      findClub(
+        args.join(" ")
+      );
+
+    if (!club) {
+      return message.reply(
+        "Club not found."
+      );
+    }
+
+    if (club === player.club) {
+      return message.reply(
+        "You're already at that club."
+      );
+    }
+
+    const required =
+      CLUBS[club] - 5;
+
+    if (
+      player.rating < required
+    ) {
+      return message.reply(
+        [
+          `**${club}** isn't ready to sign you.`,
+          "",
+          `Your OVR: **${player.rating}**`,
+          `Required OVR: **${required}**`,
+          "",
+          "Keep training and performing well."
+        ].join("\n")
+      );
+    }
+
+    const old =
+      player.club;
+
+    player.club =
+      club;
+
+    player.transferValue +=
+      rand(
+        500000,
+        5000000
+      );
+
+    saveDB();
+
+    return message.reply(
+      `🔄 Transfer completed: **${old} → ${club}**`
     );
   }
 
-  /* =======================================================
-     LEADERBOARD
-  ======================================================= */
+  /* COUNTRY */
 
-  if (command === "leaderboard") {
-    const users = Object.values(db.users)
-      .sort(
-        (a, b) =>
-          b.rating - a.rating ||
-          b.stats.goals - a.stats.goals
-      )
-      .slice(0, 10);
+  if (name === "setcountry") {
+    const country =
+      findCountry(
+        args.join(" ")
+      );
 
-    const lines = [];
-
-    for (let i = 0; i < users.length; i++) {
-      const member = await client.users
-        .fetch(users[i].id)
-        .catch(() => null);
-
-      lines.push(
-        `**${i + 1}.** ${member?.username || users[i].id} — ${users[i].rating} OVR`
+    if (!country) {
+      return message.reply(
+        "Country not found."
       );
     }
 
-    return respond(context, {
+    player.country =
+      country;
+
+    saveDB();
+
+    return message.reply(
+      `🌍 Country set to **${country}**.`
+    );
+  }
+
+  /* BALANCE */
+
+  if (name === "balance") {
+    return message.reply(
+      `💰 Coins: **${money(player.coins)}**\n💎 Gems: **${money(player.gems)}**`
+    );
+  }
+
+  /* CAREER */
+
+  if (name === "career") {
+    return message.reply({
       embeds: [
-        makeEmbed(
-          "World Ranking",
-          lines.join("\n") || "No players."
-        )
+        new EmbedBuilder()
+          .setTitle("📈 Career")
+          .setDescription(
+            [
+              `**Level:** ${player.level}`,
+              `**OVR:** ${player.rating}`,
+              `**Career:** ${player.career}`,
+              `**Club:** ${player.club}`,
+              `**Country:** ${player.country}`,
+              `**Transfer Value:** ¥${money(player.transferValue)}`,
+              "",
+              `**Matches:** ${player.stats.matches}`,
+              `**Goals:** ${player.stats.goals}`,
+              `**Assists:** ${player.stats.assists}`,
+              `**Wins:** ${player.stats.wins}`,
+              `**Losses:** ${player.stats.losses}`
+            ].join("\n")
+          )
       ]
     });
   }
 
-  /* =======================================================
-     HELP
-  ======================================================= */
+  /* TROPHIES */
 
-  if (command === "help") {
-    return respond(context, {
+  if (name === "trophies") {
+    return message.reply({
       embeds: [
-        makeEmbed(
-          "Blue Lock Football RPG",
-          [
-            "**PROFILE**",
-            "`,profile`",
-            "`,stats`",
-            "`,balance`",
-            "`,career`",
-            "`,trophies`",
-            "",
-            "**CHARACTERS**",
-            "`,roll`",
-            "`,characters`",
-            "`,character <name>`",
-            "`,setcharacter <name>`",
-            "",
-            "**FOOTBALL**",
-            "`,match`",
-            "`,clubs`",
-            "`,leagues`",
-            "`,league <name>`",
-            "`,season`",
-            "`,transfer <club>`",
-            "`,interest`",
-            "`,offers`",
-            "`,acceptoffer <id>`",
-            "",
-            "**REWARDS**",
-            "`,daily`",
-            "`,leaderboard`",
-            "",
-            "**OWNER**",
-            "`,ownerhelp`"
-          ].join("\n")
-        )
+        new EmbedBuilder()
+          .setTitle("🏆 Trophy Cabinet")
+          .setDescription(
+            player.trophies.length
+              ? player.trophies
+                  .map(
+                    x => `🏆 **${x}**`
+                  )
+                  .join("\n")
+              : "No trophies yet."
+          )
       ]
     });
   }
 
-  /* =======================================================
-     OWNER HELP
-  ======================================================= */
+  /* HELP */
 
-  if (command === "ownerhelp") {
-    if (!ownerOnly(user.id)) {
-      return respond(
-        context,
-        "You are not authorized to use owner commands."
-      );
-    }
-
-    return respond(context, {
+  if (name === "help") {
+    return message.reply({
       embeds: [
-        makeEmbed(
-          "Owner Commands",
-          [
-            "`,rob`",
-            "`,givecoins @user amount`",
-            "`,givegems @user amount`",
-            "`,givechar @user character`",
-            "`,removechar @user character`",
-            "`,giveall @user`",
-            "`,setlevel @user level`",
-            "`,setxp @user xp`",
-            "`,setrating @user rating`",
-            "`,setclub @user club`",
-            "`,setcountry @user country`",
-            "`,setcareer @user career`",
-            "`,givetrophy @user trophy`",
-            "`,resetplayer @user`",
-            "`,newseason`"
-          ].join("\n")
-        )
+        new EmbedBuilder()
+          .setTitle("⚽ Blue Lock RPG")
+          .setDescription(
+            [
+              "**PROFILE**",
+              "`,profile`",
+              "`,career`",
+              "`,stats`",
+              "`,attributes`",
+              "`,balance`",
+              "",
+              "**PLAYERS**",
+              "`,roll`",
+              "`,players`",
+              "`,character <name>`",
+              "`,setplayer <name>`",
+              "",
+              "**MATCHES**",
+              "`,match`",
+              "`,rest`",
+              "",
+              "**TRAINING**",
+              "`,train shooting`",
+              "`,train passing`",
+              "`,train dribbling`",
+              "`,train speed`",
+              "`,train defense`",
+              "`,train physical`",
+              "`,train vision`",
+              "",
+              "**CAREER**",
+              "`,interest`",
+              "`,offers`",
+              "`,acceptoffer <id>`",
+              "`,transfer <club>`",
+              "`,setcountry <country>`",
+              "",
+              "**SEASON**",
+              "`,trophies`"
+            ].join("\n")
+          )
       ]
     });
   }
 
-  /* =======================================================
-     OWNER: ROB
-  ======================================================= */
+  /* OWNER */
 
-  if (command === "rob") {
-    if (!ownerOnly(user.id)) {
-      return respond(
-        context,
-        "You are not authorized to use this command."
+  if (name === "rob") {
+    if (
+      message.author.id !==
+      OWNER_ID
+    ) {
+      return message.reply(
+        "Not authorized."
       );
     }
 
-    player.coins += 1000000000;
-    player.gems += 100000;
+    player.coins +=
+      1000000000;
+
+    player.gems +=
+      100000;
+
     player.rating = 99;
-    player.level = Math.max(
-      player.level,
-      100
-    );
+    player.level = 100;
 
     saveDB();
 
-    return respond(
-      context,
-      [
-        "Owner reward activated.",
-        "",
-        "**+1,000,000,000 coins**",
-        "**+100,000 gems**",
-        "**99 OVR**",
-        "**Level 100**"
-      ].join("\n")
+    return message.reply(
+      "👑 Owner rewards activated."
     );
   }
 
-  /* =======================================================
-     OWNER: TARGET COMMANDS
-  ======================================================= */
-
-  const ownerCommands = [
-    "givecoins",
-    "givegems",
-    "givechar",
-    "removechar",
-    "giveall",
-    "setlevel",
-    "setxp",
-    "setrating",
-    "setclub",
-    "setcountry",
-    "setcareer",
-    "givetrophy",
-    "resetplayer",
-    "newseason"
-  ];
-
-  if (ownerCommands.includes(command)) {
-    if (!ownerOnly(user.id)) {
-      return respond(
-        context,
-        "You are not authorized to use owner commands."
+  if (name === "givechar") {
+    if (
+      message.author.id !==
+      OWNER_ID
+    ) {
+      return message.reply(
+        "Not authorized."
       );
     }
 
-    if (command === "newseason") {
-      const season = startNewSeason();
-
-      return respond(
-        context,
-        `New season started: **Season ${season}**`
-      );
-    }
-
-    let target;
-
-    if (isInteraction) {
-      target = context.options.getUser("user");
-    } else {
-      target =
-        context.mentions.users.first();
-    }
+    const target =
+      message.mentions.users.first();
 
     if (!target) {
-      return respond(
-        context,
-        "You must mention a target player."
+      return message.reply(
+        "Mention a player."
       );
     }
 
-    const targetPlayer = getUser(target.id);
+    const id =
+      findPlayer(
+        args.slice(1).join(" ")
+      );
 
-    let value;
-
-    if (isInteraction) {
-      value =
-        context.options.getString("value") ||
-        String(
-          context.options.getInteger("amount") || ""
-        );
-    } else {
-      value = args.slice(1).join(" ");
-    }
-
-    if (command === "givecoins") {
-      const amount = Number(value);
-
-      if (!Number.isFinite(amount) || amount <= 0) {
-        return respond(
-          context,
-          "Enter a valid amount."
-        );
-      }
-
-      targetPlayer.coins += amount;
-
-      saveDB();
-
-      return respond(
-        context,
-        `Gave **${formatNumber(amount)} coins** to ${target}.`
+    if (!id) {
+      return message.reply(
+        "Player not found."
       );
     }
 
-    if (command === "givegems") {
-      const amount = Number(value);
+    const targetData =
+      getUser(target.id);
 
-      if (!Number.isFinite(amount) || amount <= 0) {
-        return respond(
-          context,
-          "Enter a valid amount."
-        );
-      }
+    if (
+      !targetData.players.includes(id)
+    ) {
+      targetData.players.push(id);
+    }
 
-      targetPlayer.gems += amount;
+    saveDB();
 
-      saveDB();
+    return message.reply(
+      `Gave **${PLAYERS[id].name}** to ${target}.`
+    );
+  }
 
-      return respond(
-        context,
-        `Gave **${formatNumber(amount)} gems** to ${target}.`
+  if (name === "givecoins") {
+    if (
+      message.author.id !==
+      OWNER_ID
+    ) {
+      return message.reply(
+        "Not authorized."
       );
     }
 
-    if (command === "givechar") {
-      const id = findCharacter(value);
+    const target =
+      message.mentions.users.first();
 
-      if (!id) {
-        return respond(
-          context,
-          "I couldn't find that character."
-        );
-      }
+    const amount =
+      Number(
+        args[1]
+      );
 
-      if (!targetPlayer.characters.includes(id)) {
-        targetPlayer.characters.push(id);
-      }
-
-      saveDB();
-
-      return respond(
-        context,
-        `Gave **${CHARACTERS[id].name}** to ${target}.`
+    if (
+      !target ||
+      !Number.isFinite(amount)
+    ) {
+      return message.reply(
+        "Use `,givecoins @user amount`."
       );
     }
 
-    if (command === "removechar") {
-      const id = findCharacter(value);
+    getUser(
+      target.id
+    ).coins += amount;
 
-      if (!id) {
-        return respond(
-          context,
-          "I couldn't find that character."
-        );
-      }
+    saveDB();
 
-      targetPlayer.characters =
-        targetPlayer.characters.filter(
-          x => x !== id
-        );
+    return message.reply(
+      `Gave **${money(amount)} coins** to ${target}.`
+    );
+  }
 
-      if (targetPlayer.activeCharacter === id) {
-        targetPlayer.activeCharacter = null;
-      }
-
-      saveDB();
-
-      return respond(
-        context,
-        `Removed **${CHARACTERS[id].name}** from ${target}.`
+  if (name === "givegems") {
+    if (
+      message.author.id !==
+      OWNER_ID
+    ) {
+      return message.reply(
+        "Not authorized."
       );
     }
 
-    if (command === "giveall") {
-      for (const id of Object.keys(CHARACTERS)) {
-        if (!targetPlayer.characters.includes(id)) {
-          targetPlayer.characters.push(id);
-        }
-      }
+    const target =
+      message.mentions.users.first();
 
-      targetPlayer.coins += 1000000;
-      targetPlayer.gems += 10000;
-      targetPlayer.rating = 99;
+    const amount =
+      Number(
+        args[1]
+      );
 
-      saveDB();
-
-      return respond(
-        context,
-        `Gave ${target} **all characters**, 1,000,000 coins, 10,000 gems and 99 OVR.`
+    if (
+      !target ||
+      !Number.isFinite(amount)
+    ) {
+      return message.reply(
+        "Use `,givegems @user amount`."
       );
     }
 
-    if (command === "setlevel") {
-      const level = Number(value);
+    getUser(
+      target.id
+    ).gems += amount;
 
-      if (!Number.isFinite(level) || level < 1) {
-        return respond(
-          context,
-          "Invalid level."
-        );
-      }
+    saveDB();
 
-      targetPlayer.level = Math.floor(level);
-
-      saveDB();
-
-      return respond(
-        context,
-        `Set ${target}'s level to **${targetPlayer.level}**.`
-      );
-    }
-
-    if (command === "setxp") {
-      const xp = Number(value);
-
-      if (!Number.isFinite(xp) || xp < 0) {
-        return respond(
-          context,
-          "Invalid XP."
-        );
-      }
-
-      targetPlayer.xp = Math.floor(xp);
-
-      saveDB();
-
-      return respond(
-        context,
-        `Set ${target}'s XP to **${targetPlayer.xp}**.`
-      );
-    }
-
-    if (command === "setrating") {
-      const rating = Number(value);
-
-      if (
-        !Number.isFinite(rating) ||
-        rating < 1 ||
-        rating > 99
-      ) {
-        return respond(
-          context,
-          "Rating must be between 1 and 99."
-        );
-      }
-
-      targetPlayer.rating = Math.floor(rating);
-
-      saveDB();
-
-      return respond(
-        context,
-        `Set ${target}'s rating to **${targetPlayer.rating} OVR**.`
-      );
-    }
-
-    if (command === "setclub") {
-      const club = findClub(value);
-
-      if (!club) {
-        return respond(
-          context,
-          "I couldn't find that club."
-        );
-      }
-
-      targetPlayer.club = club;
-
-      targetPlayer.contract = {
-        club,
-        expires: db.seasons.current + 3
-      };
-
-      saveDB();
-
-      return respond(
-        context,
-        `Set ${target}'s club to **${club}**.`
-      );
-    }
-
-    if (command === "setcountry") {
-      const country = findCountry(value);
-
-      if (!country) {
-        return respond(
-          context,
-          "I couldn't find that country."
-        );
-      }
-
-      targetPlayer.country = country;
-
-      saveDB();
-
-      return respond(
-        context,
-        `Set ${target}'s country to **${country}**.`
-      );
-    }
-
-    if (command === "setcareer") {
-      if (!value) {
-        return respond(
-          context,
-          "Enter a career level."
-        );
-      }
-
-      targetPlayer.career = value;
-
-      saveDB();
-
-      return respond(
-        context,
-        `Set ${target}'s career to **${value}**.`
-      );
-    }
-
-    if (command === "givetrophy") {
-      const trophy = findTrophy(value);
-
-      if (!trophy) {
-        return respond(
-          context,
-          "I couldn't find that trophy."
-        );
-      }
-
-      giveTrophy(
-        targetPlayer,
-        trophy
-      );
-
-      saveDB();
-
-      return respond(
-        context,
-        `Gave **${trophy}** to ${target}.`
-      );
-    }
-
-    if (command === "resetplayer") {
-      delete db.users[target.id];
-
-      saveDB();
-
-      return respond(
-        context,
-        `Reset ${target}'s RPG profile.`
-      );
-    }
+    return message.reply(
+      `Gave **${money(amount)} gems** to ${target}.`
+    );
   }
 }
 
 /* =========================================================
-   PREFIX COMMANDS
+   PREFIX
 ========================================================= */
 
-client.on("messageCreate", async message => {
-  if (message.author.bot) return;
+client.on(
+  "messageCreate",
+  async message => {
+    if (message.author.bot) return;
 
-  if (!message.content.startsWith(PREFIX)) {
-    return;
+    if (
+      !message.content.startsWith(PREFIX)
+    ) {
+      return;
+    }
+
+    const content =
+      message.content
+        .slice(PREFIX.length)
+        .trim();
+
+    if (!content) return;
+
+    const parts =
+      content.split(/\s+/);
+
+    const name =
+      parts.shift().toLowerCase();
+
+    try {
+      await command(
+        name,
+        parts,
+        message
+      );
+    } catch (error) {
+      console.error(error);
+
+      await message.reply(
+        "Something went wrong."
+      ).catch(() => {});
+    }
   }
-
-  const content =
-    message.content
-      .slice(PREFIX.length)
-      .trim();
-
-  if (!content) return;
-
-  const parts =
-    content.split(/\s+/);
-
-  const command =
-    parts.shift().toLowerCase();
-
-  try {
-    await executeCommand(
-      command,
-      parts,
-      {
-        isInteraction: false,
-        author: message.author,
-        mentions: message.mentions,
-        reply: message.reply.bind(message)
-      }
-    );
-  } catch (error) {
-    console.error(error);
-
-    await message.reply(
-      "Something went wrong while running that command."
-    ).catch(() => {});
-  }
-});
+);
 
 /* =========================================================
-   SLASH COMMAND DEFINITIONS
+   SLASH COMMANDS
 ========================================================= */
 
 const slashCommands = [
   new SlashCommandBuilder()
     .setName("profile")
-    .setDescription("View a career profile")
-    .addUserOption(option =>
-      option
-        .setName("user")
-        .setDescription("Player")
-        .setRequired(false)
-    ),
+    .setDescription("View your career"),
 
   new SlashCommandBuilder()
     .setName("roll")
-    .setDescription("Roll for a character"),
+    .setDescription("Roll for a player"),
 
   new SlashCommandBuilder()
-    .setName("characters")
-    .setDescription("View your characters"),
+    .setName("players")
+    .setDescription("View your players"),
 
   new SlashCommandBuilder()
     .setName("character")
-    .setDescription("View a character")
-    .addStringOption(option =>
-      option
+    .setDescription("View a player")
+    .addStringOption(o =>
+      o
         .setName("name")
-        .setDescription("Character name")
+        .setDescription("Player name")
         .setRequired(true)
     ),
 
   new SlashCommandBuilder()
-    .setName("setcharacter")
-    .setDescription("Equip a character")
-    .addStringOption(option =>
-      option
+    .setName("setplayer")
+    .setDescription("Equip a player")
+    .addStringOption(o =>
+      o
         .setName("name")
-        .setDescription("Character name")
+        .setDescription("Player name")
         .setRequired(true)
     ),
-
-  new SlashCommandBuilder()
-    .setName("stats")
-    .setDescription("View statistics"),
-
-  new SlashCommandBuilder()
-    .setName("balance")
-    .setDescription("View balance"),
-
-  new SlashCommandBuilder()
-    .setName("career")
-    .setDescription("View career"),
-
-  new SlashCommandBuilder()
-    .setName("clubs")
-    .setDescription("View clubs"),
-
-  new SlashCommandBuilder()
-    .setName("leagues")
-    .setDescription("View leagues"),
-
-  new SlashCommandBuilder()
-    .setName("countries")
-    .setDescription("View countries"),
-
-  new SlashCommandBuilder()
-    .setName("trophies")
-    .setDescription("View trophies"),
-
-  new SlashCommandBuilder()
-    .setName("leaderboard")
-    .setDescription("View rankings"),
-
-  new SlashCommandBuilder()
-    .setName("daily")
-    .setDescription("Claim daily reward"),
 
   new SlashCommandBuilder()
     .setName("match")
-    .setDescription("Play a match"),
+    .setDescription("Play an interactive match"),
 
   new SlashCommandBuilder()
-    .setName("season")
-    .setDescription("View current season"),
-
-  new SlashCommandBuilder()
-    .setName("league")
-    .setDescription("View a competition")
-    .addStringOption(option =>
-      option
-        .setName("name")
-        .setDescription("League or competition")
+    .setName("train")
+    .setDescription("Train an attribute")
+    .addStringOption(o =>
+      o
+        .setName("type")
+        .setDescription("Training type")
         .setRequired(true)
+        .addChoices(
+          { name: "Shooting", value: "shooting" },
+          { name: "Passing", value: "passing" },
+          { name: "Dribbling", value: "dribbling" },
+          { name: "Speed", value: "speed" },
+          { name: "Defense", value: "defense" },
+          { name: "Physical", value: "physical" },
+          { name: "Vision", value: "vision" }
+        )
     ),
 
   new SlashCommandBuilder()
-    .setName("transfer")
-    .setDescription("Transfer to a club")
-    .addStringOption(option =>
-      option
-        .setName("club")
-        .setDescription("Club")
-        .setRequired(true)
-    ),
+    .setName("attributes")
+    .setDescription("View attributes"),
+
+  new SlashCommandBuilder()
+    .setName("rest")
+    .setDescription("Recover stamina"),
 
   new SlashCommandBuilder()
     .setName("interest")
@@ -2934,139 +2592,641 @@ const slashCommands = [
 
   new SlashCommandBuilder()
     .setName("acceptoffer")
-    .setDescription("Accept a transfer offer")
-    .addStringOption(option =>
-      option
+    .setDescription("Accept transfer offer")
+    .addStringOption(o =>
+      o
         .setName("id")
         .setDescription("Offer ID")
         .setRequired(true)
     ),
 
   new SlashCommandBuilder()
+    .setName("transfer")
+    .setDescription("Transfer to a club")
+    .addStringOption(o =>
+      o
+        .setName("club")
+        .setDescription("Club")
+        .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("setcountry")
+    .setDescription("Set country")
+    .addStringOption(o =>
+      o
+        .setName("country")
+        .setDescription("Country")
+        .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("career")
+    .setDescription("View career"),
+
+  new SlashCommandBuilder()
+    .setName("stats")
+    .setDescription("View statistics"),
+
+  new SlashCommandBuilder()
+    .setName("balance")
+    .setDescription("View balance"),
+
+  new SlashCommandBuilder()
+    .setName("trophies")
+    .setDescription("View trophies"),
+
+  new SlashCommandBuilder()
     .setName("help")
     .setDescription("View commands")
-].map(command => command.toJSON());
+].map(x => x.toJSON());
 
 /* =========================================================
    SLASH HANDLER
 ========================================================= */
 
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isChatInputCommand()) {
-    return;
-  }
-
-  const context = {
-    isInteraction: true,
-    user: interaction.user,
-    options: interaction.options,
-    replied: interaction.replied,
-    deferred: interaction.deferred,
-
-    reply: payload =>
-      interaction.reply(payload),
-
-    followUp: payload =>
-      interaction.followUp(payload)
-  };
-
-  try {
-    await executeCommand(
-      interaction.commandName,
-      [],
-      context
-    );
-  } catch (error) {
-    console.error(error);
-
+client.on(
+  "interactionCreate",
+  async interaction => {
     if (
-      interaction.replied ||
-      interaction.deferred
+      !interaction.isChatInputCommand()
     ) {
-      await interaction.followUp({
-        content: "Something went wrong.",
-        ephemeral: true
-      }).catch(() => {});
-    } else {
-      await interaction.reply({
-        content: "Something went wrong.",
-        ephemeral: true
-      }).catch(() => {});
+      return;
+    }
+
+    const player =
+      getUser(
+        interaction.user.id
+      );
+
+    try {
+      const name =
+        interaction.commandName;
+
+      if (name === "train") {
+        const type =
+          interaction.options.getString(
+            "type"
+          );
+
+        const result =
+          train(
+            player,
+            type
+          );
+
+        if (!result.success) {
+          return interaction.reply(
+            result.message
+          );
+        }
+
+        return interaction.reply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle(
+                `🏋️ ${result.training.name}`
+              )
+              .setDescription(
+                [
+                  `${result.old} → ${result.newValue}`,
+                  `**+${result.increase} attribute**`,
+                  "",
+                  `OVR: ${result.oldOVR} → ${result.newOVR}`,
+                  `XP: +${result.xp}`,
+                  `Stamina: ${player.stamina}/100`
+                ].join("\n")
+              )
+          ]
+        });
+      }
+
+      if (name === "character") {
+        const id =
+          findPlayer(
+            interaction.options.getString(
+              "name"
+            )
+          );
+
+        if (!id) {
+          return interaction.reply(
+            "Player not found."
+          );
+        }
+
+        const p =
+          PLAYERS[id];
+
+        return interaction.reply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle(p.name)
+              .setDescription(
+                [
+                  `OVR: **${p.rating}**`,
+                  `Rarity: **${p.rarity}**`,
+                  `Position: **${p.position}**`,
+                  `Country: **${p.country}**`,
+                  `Club: **${p.club}**`,
+                  "",
+                  p.skills
+                    .map(
+                      (x, i) =>
+                        `${i + 1}. ${x}`
+                    )
+                    .join("\n")
+                ].join("\n")
+              )
+          ]
+        });
+      }
+
+      if (
+        name === "setplayer"
+      ) {
+        const id =
+          findPlayer(
+            interaction.options.getString(
+              "name"
+            )
+          );
+
+        if (!id) {
+          return interaction.reply(
+            "Player not found."
+          );
+        }
+
+        if (
+          !player.players.includes(id)
+        ) {
+          return interaction.reply(
+            "You don't own that player."
+          );
+        }
+
+        player.activePlayer = id;
+        player.position =
+          PLAYERS[id].position;
+
+        saveDB();
+
+        return interaction.reply(
+          `Equipped **${PLAYERS[id].name}**.`
+        );
+      }
+
+      if (
+        name === "transfer"
+      ) {
+        const club =
+          findClub(
+            interaction.options.getString(
+              "club"
+            )
+          );
+
+        if (!club) {
+          return interaction.reply(
+            "Club not found."
+          );
+        }
+
+        player.club = club;
+
+        saveDB();
+
+        return interaction.reply(
+          `Transferred to **${club}**.`
+        );
+      }
+
+      if (
+        name === "setcountry"
+      ) {
+        const country =
+          findCountry(
+            interaction.options.getString(
+              "country"
+            )
+          );
+
+        if (!country) {
+          return interaction.reply(
+            "Country not found."
+          );
+        }
+
+        player.country =
+          country;
+
+        saveDB();
+
+        return interaction.reply(
+          `Country set to **${country}**.`
+        );
+      }
+
+      if (
+        name === "acceptoffer"
+      ) {
+        const id =
+          interaction.options.getString(
+            "id"
+          );
+
+        const offer =
+          player.offers.find(
+            x =>
+              x.id === id &&
+              x.status === "pending"
+          );
+
+        if (!offer) {
+          return interaction.reply(
+            "Offer not found."
+          );
+        }
+
+        player.club =
+          offer.club;
+
+        offer.status =
+          "accepted";
+
+        saveDB();
+
+        return interaction.reply(
+          `✅ You joined **${offer.club}**.`
+        );
+      }
+
+      if (
+        name === "profile" ||
+        name === "career" ||
+        name === "stats" ||
+        name === "balance" ||
+        name === "attributes" ||
+        name === "trophies" ||
+        name === "players" ||
+        name === "interest" ||
+        name === "offers" ||
+        name === "help"
+      ) {
+        return interaction.reply(
+          `Use the prefix version: \`,${name}\``
+        );
+      }
+
+      if (name === "roll") {
+        const entries =
+          Object.entries(
+            PLAYERS
+          );
+
+        const [
+          id,
+          rolled
+        ] =
+          entries[
+            rand(
+              0,
+              entries.length - 1
+            )
+          ];
+
+        if (
+          !player.players.includes(id)
+        ) {
+          player.players.push(id);
+        } else {
+          player.coins += 1000;
+        }
+
+        saveDB();
+
+        return interaction.reply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle(
+                `🎰 ${rolled.name}`
+              )
+              .setDescription(
+                [
+                  `**${rolled.rarity}**`,
+                  `**${rolled.rating} OVR**`,
+                  "",
+                  rolled.skills
+                    .map(
+                      x => `• ${x}`
+                    )
+                    .join("\n")
+                ].join("\n")
+              )
+          ]
+        });
+      }
+
+      if (name === "rest") {
+        player.stamina =
+          clamp(
+            player.stamina + 30,
+            0,
+            100
+          );
+
+        saveDB();
+
+        return interaction.reply(
+          `🔋 Stamina: **${player.stamina}/100**`
+        );
+      }
+
+      if (name === "match") {
+        /*
+          Slash matches need a message-like
+          interface, so this uses a temporary
+          button interaction.
+        */
+
+        if (
+          !getActivePlayer(player)
+        ) {
+          return interaction.reply(
+            "Equip a player first with `/setplayer`."
+          );
+        }
+
+        if (
+          player.stamina < 30
+        ) {
+          return interaction.reply(
+            "You need at least 30 stamina."
+          );
+        }
+
+        player.stamina -= 30;
+
+        const clubs =
+          Object.keys(CLUBS);
+
+        const opponent =
+          clubs[
+            rand(
+              0,
+              clubs.length - 1
+            )
+          ];
+
+        let goals = 0;
+        let assists = 0;
+        let oppGoals = rand(0, 3);
+        let chances = 0;
+
+        const active =
+          getActivePlayer(player);
+
+        await interaction.reply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle(
+                `⚽ ${player.club} vs ${opponent}`
+              )
+              .setDescription(
+                [
+                  `Player: **${active.name}**`,
+                  "",
+                  `**0 - ${oppGoals}**`,
+                  "",
+                  "🔥 **CHANCE!**",
+                  "Choose an action."
+                ].join("\n")
+              )
+          ],
+          components: [
+            matchButtonRow(player)
+          ]
+        });
+
+        const msg =
+          await interaction.fetchReply();
+
+        const collector =
+          msg.createMessageComponentCollector({
+            componentType:
+              ComponentType.Button,
+            time: 60000
+          });
+
+        collector.on(
+          "collect",
+          async btn => {
+            if (
+              btn.user.id !==
+              interaction.user.id
+            ) {
+              return btn.reply({
+                content:
+                  "This isn't your match.",
+                ephemeral: true
+              });
+            }
+
+            chances++;
+
+            const result =
+              performAction(
+                player,
+                btn.customId,
+                {},
+                CLUBS[opponent]
+              );
+
+            player.stamina =
+              clamp(
+                player.stamina -
+                  (btn.customId === "skill"
+                    ? 10
+                    : 5),
+                0,
+                100
+              );
+
+            if (result.goal) goals++;
+            if (result.assist) assists++;
+
+            if (
+              chances >= 3
+            ) {
+              collector.stop();
+            }
+
+            await btn.update({
+              embeds: [
+                new EmbedBuilder()
+                  .setTitle(
+                    "⚽ Match Chance"
+                  )
+                  .setDescription(
+                    [
+                      result.success
+                        ? `**${btn.customId.toUpperCase()} SUCCESS**`
+                        : `**${btn.customId.toUpperCase()} FAILED**`,
+                      "",
+                      result.goal
+                        ? "⚽ GOAL!"
+                        : result.assist
+                          ? "🅰️ ASSIST!"
+                          : "No direct contribution.",
+                      "",
+                      `Score: **${goals} - ${oppGoals}**`,
+                      `Stamina: **${player.stamina}/100**`,
+                      `Chance: **${chances}/3**`
+                    ].join("\n")
+                  )
+              ],
+              components:
+                chances >= 3
+                  ? []
+                  : [matchButtonRow(player)]
+            });
+          }
+        );
+
+        collector.on(
+          "end",
+          async () => {
+            const final =
+              finishMatch(
+                player,
+                CLUBS[opponent],
+                goals,
+                assists,
+                oppGoals
+              );
+
+            await interaction.editReply({
+              embeds: [
+                new EmbedBuilder()
+                  .setTitle(
+                    "🏁 MATCH FINISHED"
+                  )
+                  .setDescription(
+                    [
+                      `**${player.club} ${goals} - ${oppGoals} ${opponent}**`,
+                      "",
+                      final.result === "win"
+                        ? "🏆 **VICTORY**"
+                        : final.result === "draw"
+                          ? "🤝 **DRAW**"
+                          : "❌ **DEFEAT**",
+                      "",
+                      `⚽ Goals: **${goals}**`,
+                      `🅰️ Assists: **${assists}**`,
+                      `⭐ Rating: **${final.rating}**`,
+                      "",
+                      `OVR: **${final.oldOVR} → ${final.newOVR}**`,
+                      `Improvement: **${final.improvement >= 0 ? "+" : ""}${final.improvement}**`,
+                      `XP: **+${final.xp}**`,
+                      `Coins: **+${money(final.coins)}**`,
+                      "",
+                      final.interest.length
+                        ? "**👀 Club Interest**\n" +
+                          final.interest
+                            .map(
+                              x =>
+                                `• ${x.club} — ${x.level}`
+                            )
+                            .join("\n")
+                        : "No new club interest."
+                    ].join("\n")
+                  )
+              ],
+              components: []
+            }).catch(() => {});
+          }
+        );
+
+        return;
+      }
+    } catch (error) {
+      console.error(error);
+
+      if (!interaction.replied) {
+        await interaction.reply(
+          "Something went wrong."
+        ).catch(() => {});
+      }
     }
   }
-});
+);
 
 /* =========================================================
    READY
 ========================================================= */
 
-client.once("clientReady", async ready => {
-  console.log(
-    `Logged in as ${ready.user.tag}`
-  );
+client.once(
+  "clientReady",
+  async ready => {
+    console.log(
+      `Logged in as ${ready.user.tag}`
+    );
 
-  console.log(
-    `Owner: ${OWNER_ID}`
-  );
+    console.log(
+      `Players loaded: ${Object.keys(PLAYERS).length}`
+    );
 
-  console.log(
-    `Current Season: ${db.seasons.current}`
-  );
+    console.log(
+      `Season: ${db.season}`
+    );
 
-  try {
-    if (GUILD_ID) {
-      const guild =
-        await ready.guilds.fetch(GUILD_ID);
+    try {
+      if (GUILD_ID) {
+        const guild =
+          await ready.guilds.fetch(
+            GUILD_ID
+          );
 
-      await guild.commands.set(
-        slashCommands
-      );
+        await guild.commands.set(
+          slashCommands
+        );
+      } else {
+        await ready.application.commands.set(
+          slashCommands
+        );
+      }
 
       console.log(
-        `Registered ${slashCommands.length} slash commands.`
+        "Slash commands registered."
       );
-    } else {
-      await ready.application.commands.set(
-        slashCommands
-      );
-
-      console.log(
-        `Registered ${slashCommands.length} global slash commands.`
+    } catch (error) {
+      console.error(
+        "Slash registration error:",
+        error
       );
     }
-  } catch (error) {
-    console.error(
-      "Slash registration error:",
-      error
+
+    console.log(
+      "Blue Lock RPG ONLINE."
     );
   }
-
-  console.log(
-    "Blue Lock Football RPG ONLINE."
-  );
-});
-
-/* =========================================================
-   ERRORS
-========================================================= */
-
-process.on(
-  "unhandledRejection",
-  error => console.error(error)
-);
-
-process.on(
-  "uncaughtException",
-  error => console.error(error)
 );
 
 /* =========================================================
    LOGIN
 ========================================================= */
 
-client.login(TOKEN).catch(error => {
-  console.error(
-    "Discord login failed:",
-    error
-  );
-});
+client.login(TOKEN).catch(
+  console.error
+);
+
+process.on(
+  "unhandledRejection",
+  console.error
+);
+
+process.on(
+  "uncaughtException",
+  console.error
+);
