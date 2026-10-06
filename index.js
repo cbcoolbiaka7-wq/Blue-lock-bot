@@ -2,36 +2,26 @@ const {
   Client,
   GatewayIntentBits,
   Partials,
-  EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  EmbedBuilder,
+  SlashCommandBuilder,
   REST,
-  Routes,
-  SlashCommandBuilder
+  Routes
 } = require("discord.js");
 
 const fs = require("fs");
 const path = require("path");
 
-// ===============================
-// CONFIG
-// ===============================
-
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID || null;
+const GUILD_ID = process.env.GUILD_ID;
 
 const PREFIX = ",";
 const OWNER_ID = "1547542814525493269";
 
-if (!TOKEN) {
-  throw new Error("Missing DISCORD_TOKEN");
-}
-
-// ===============================
-// CLIENT
-// ===============================
+if (!TOKEN) throw new Error("Missing DISCORD_TOKEN");
 
 const client = new Client({
   intents: [
@@ -42,3174 +32,1118 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
-// ===============================
-// DATABASE
-// ===============================
+/* =========================
+   DATABASE
+========================= */
 
-const DATA_DIR = path.join(__dirname, "data");
-const DB_FILE = path.join(DATA_DIR, "database.json");
+const dataDir = path.join(__dirname, "data");
+const dbFile = path.join(dataDir, "database.json");
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+if (!fs.existsSync(dbFile)) fs.writeFileSync(dbFile, "{}");
+
+let db;
+
+try {
+  db = JSON.parse(fs.readFileSync(dbFile, "utf8"));
+} catch {
+  db = {};
 }
 
-if (!fs.existsSync(DB_FILE)) {
-  fs.writeFileSync(
-    DB_FILE,
-    JSON.stringify({ players: {} }, null, 2)
-  );
+function save() {
+  fs.writeFileSync(dbFile, JSON.stringify(db, null, 2));
 }
 
-let db = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+/* =========================
+   CHARACTERS
+========================= */
 
-function saveDB() {
-  fs.writeFileSync(
-    DB_FILE,
-    JSON.stringify(db, null, 2)
-  );
-}
-
-// ===============================
-// HELPERS
-// ===============================
-
-function isOwner(id) {
-  return id === OWNER_ID;
-}
-
-function normalize(text) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-}
-
-function random(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function pick(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function xpNeeded(level) {
-  return 100 + level * 50;
-}
-
-// ===============================
-// CLUBS / NEL
-// ===============================
-
-const CLUBS = [
-  "Bastard München",
-  "Paris X Gen",
-  "Ubers",
-  "Manshine City",
-  "FC Barcha",
-  "Japan U-20",
-  "Blue Lock Eleven",
-  "Real Madrid",
-  "Ajax",
-  "FC Barcelona"
+const CHARACTERS = [
+  ["Yoichi Isagi", 95, "ST", "Japan", "Bastard München", ["Meta Vision", "Direct Shot", "Two-Gun Volley"]],
+  ["Michael Kaiser", 98, "ST", "Germany", "Bastard München", ["Kaiser Impact", "Kaiser Impact Magnus", "Emperor's Eye"]],
+  ["Noel Noa", 100, "ST", "France", "Bastard München", ["World Class", "Perfect Shooting", "Meta Vision"]],
+  ["Alexis Ness", 91, "CM", "Germany", "Bastard München", ["Magic Pass", "Kaiser Assist", "Creative Vision"]],
+  ["Rensuke Kunigami", 88, "ST", "Japan", "Bastard München", ["Power Shot", "Ambidextrous", "Hero Mode"]],
+  ["Meguru Bachira", 94, "RW", "Japan", "FC Barcha", ["Monster", "Elastico", "Dribble Genius"]],
+  ["Lavinho", 99, "LW", "Brazil", "FC Barcha", ["Brazilian Dance", "Creative Dribble", "Magician"]],
+  ["Seishiro Nagi", 96, "ST", "Japan", "Manshine City", ["Perfect Trap", "Five Shot Revolver", "Fake Volley"]],
+  ["Reo Mikage", 92, "CM", "Japan", "Manshine City", ["Chameleon", "Copy", "Adaptation"]],
+  ["Hyoma Chigiri", 91, "LW", "Japan", "Manshine City", ["Speed", "44 Panther Snipe", "Long Sprint"]],
+  ["Shoei Barou", 96, "ST", "Japan", "Ubers", ["Predator Eye", "King's Shot", "Charging King"]],
+  ["Oliver Aiku", 91, "CB", "Japan", "Ubers", ["Defensive Vision", "Read", "Aerial Control"]],
+  ["Don Lorenzo", 96, "CB", "Italy", "Ubers", ["Zombie Dribble", "Man Marking", "Ace Eater"]],
+  ["Marc Snuffy", 99, "ST", "Italy", "Ubers", ["Tactical Master", "Perfect Position", "Master Vision"]],
+  ["Rin Itoshi", 98, "ST", "Japan", "Paris X Gen", ["Destroyer", "Puppet Control", "Flow Shot"]],
+  ["Ryusei Shidou", 97, "ST", "Japan", "Paris X Gen", ["Dragon Drive", "Big Bang Drive", "Spatial Awareness"]],
+  ["Charles Chevalier", 92, "CM", "France", "Paris X Gen", ["Killer Pass", "Vision", "Thread Pass"]],
+  ["Julian Loki", 99, "ST", "France", "Paris X Gen", ["Godspeed", "Acceleration", "Lightning Shot"]],
+  ["Kenyu Yukimiya", 89, "LW", "Japan", "Bastard München", ["Gyro Shot", "1v1", "Cut Inside"]],
+  ["Tabito Karasu", 90, "CM", "Japan", "Paris X Gen", ["Ball Keeping", "Analyst", "Feint"]],
+  ["Eita Otoya", 87, "RW", "Japan", "FC Barcha", ["Stealth", "Off Ball", "Quick Finish"]],
+  ["Ikki Niko", 86, "CB", "Japan", "Ubers", ["Eye", "Interception", "Defensive Vision"]],
+  ["Gin Gagamaru", 88, "GK", "Japan", "Bastard München", ["Super Save", "Reflex", "Acrobatic Save"]],
+  ["Yo Hiori", 90, "CM", "Japan", "Bastard München", ["Perfect Pass", "Vision", "Outside Foot"]],
+  ["Jyubei Aryu", 85, "CB", "Japan", "Ubers", ["Height", "Aerial", "Long Reach"]],
+  ["Zantetsu Tsurugi", 82, "RW", "Japan", "Manshine City", ["Explosive Speed", "Acceleration", "Power Run"]],
+  ["Agi", 89, "ST", "England", "Manshine City", ["Technical Shot", "Physicality", "Control"]],
+  ["Kaiser NEL", 99, "ST", "Germany", "Bastard München", ["Kaiser Impact", "Emperor's Eye", "Magnus"]],
+  ["Isagi NEL", 97, "ST", "Japan", "Bastard München", ["Meta Vision", "Two-Gun Volley", "Adaptation"]],
+  ["Rin NEL", 99, "ST", "Japan", "Paris X Gen", ["Destroyer", "Flow Shot", "Puppet Control"]],
+  ["Shidou NEL", 98, "ST", "Japan", "Paris X Gen", ["Big Bang Drive", "Dragon Drive", "Instinct"]],
+  ["Barou NEL", 97, "ST", "Japan", "Ubers", ["Predator Eye", "King's Shot", "Villain"]],
+  ["Nagi NEL", 97, "ST", "Japan", "Manshine City", ["Perfect Trap", "Revolver", "Trap Shot"]],
+  ["Bachira NEL", 95, "RW", "Japan", "FC Barcha", ["Monster", "Elastic Dribble", "Solo Run"]],
+  ["Chigiri NEL", 93, "LW", "Japan", "Manshine City", ["Speed", "Panther Snipe", "Sprint"]],
+  ["Kunigami NEL", 91, "ST", "Japan", "Bastard München", ["Power Shot", "Ambidextrous", "Hero Mode"]],
+  ["Ness NEL", 93, "CM", "Germany", "Bastard München", ["Magic Pass", "Kaiser Assist", "Vision"]],
+  ["Lorenzo NEL", 97, "CB", "Italy", "Ubers", ["Man Marking", "Zombie Dribble", "Ace Eater"]],
+  ["Snuffy NEL", 100, "ST", "Italy", "Ubers", ["Master Vision", "Tactics", "Perfect Position"]],
+  ["Loki NEL", 100, "ST", "France", "Paris X Gen", ["Godspeed", "Lightning", "Acceleration"]],
+  ["Lavinho NEL", 100, "LW", "Brazil", "FC Barcha", ["Magician", "Brazilian Dance", "Creative Dribble"]]
 ];
 
-const CLUB_ALIASES = {
-  bm: "Bastard München",
-  bastardmunchen: "Bastard München",
-  munchen: "Bastard München",
-
-  pxg: "Paris X Gen",
-  parisxgen: "Paris X Gen",
-
-  ubers: "Ubers",
-
-  manshine: "Manshine City",
-  manshinecity: "Manshine City",
-
-  barcha: "FC Barcha",
-  fcbarcha: "FC Barcha",
-
-  japan: "Japan U-20",
-  japanu20: "Japan U-20",
-
-  bluelock: "Blue Lock Eleven",
-
-  madrid: "Real Madrid",
-  realmadrid: "Real Madrid",
-
-  barca: "FC Barcelona",
-  barcelona: "FC Barcelona"
-};
-
-// ===============================
-// BLUE LOCK MANGA CHARACTERS
-// ===============================
-
-const PLAYER_DATA = [
-  {
-    name: "Yoichi Isagi",
-    country: "Japan",
-    club: "Bastard München",
-    rating: 94,
-    position: "ST",
-    skills: [
-      "Meta Vision",
-      "Direct Shot",
-      "Two-Gun Volley",
-      "Spatial Awareness",
-      "Off-Ball Movement"
-    ],
-    flow: "Meta Vision"
-  },
-
-  {
-    name: "Michael Kaiser",
-    country: "Germany",
-    club: "Bastard München",
-    rating: 98,
-    position: "ST",
-    skills: [
-      "Kaiser Impact",
-      "Kaiser Impact Magnus",
-      "Predator Eye",
-      "Kaiser Vision",
-      "Perfect Finish"
-    ],
-    flow: "Emperor"
-  },
-
-  {
-    name: "Noel Noa",
-    country: "France",
-    club: "Bastard München",
-    rating: 100,
-    position: "ST",
-    skills: [
-      "Ambidextrous Kick",
-      "Perfect Shot",
-      "Master Touch",
-      "World-Class Vision",
-      "Perfect Finish"
-    ],
-    flow: "Master"
-  },
-
-  {
-    name: "Rin Itoshi",
-    country: "Japan",
-    club: "Paris X Gen",
-    rating: 97,
-    position: "ST",
-    skills: [
-      "Puppet Control",
-      "Destroyer Shot",
-      "Spatial Reading",
-      "Precision Kick",
-      "Flow Control"
-    ],
-    flow: "Destroyer"
-  },
-
-  {
-    name: "Julian Loki",
-    country: "France",
-    club: "Paris X Gen",
-    rating: 99,
-    position: "ST",
-    skills: [
-      "Godspeed",
-      "Lightning Run",
-      "Explosive Acceleration",
-      "Speed Break",
-      "Perfect Timing"
-    ],
-    flow: "Godspeed"
-  },
-
-  {
-    name: "Ryusei Shidou",
-    country: "Japan",
-    club: "Paris X Gen",
-    rating: 96,
-    position: "ST",
-    skills: [
-      "Dragon Drive",
-      "Acrobatic Finish",
-      "Spatial Instinct",
-      "Explosive Volley",
-      "Goal Hunter"
-    ],
-    flow: "Destroyer"
-  },
-
-  {
-    name: "Charles Chevalier",
-    country: "France",
-    club: "Paris X Gen",
-    rating: 94,
-    position: "AM",
-    skills: [
-      "Killer Pass",
-      "Threaded Pass",
-      "Field Vision",
-      "Counter Pass",
-      "Creative Assist"
-    ],
-    flow: "Playmaker"
-  },
-
-  {
-    name: "Tabito Karasu",
-    country: "Japan",
-    club: "Paris X Gen",
-    rating: 90,
-    position: "CM",
-    skills: [
-      "Ball Keeping",
-      "Pressure Control",
-      "Midfield Lock",
-      "Feint",
-      "Tactical Pass"
-    ],
-    flow: "Playmaker"
-  },
-
-  {
-    name: "Meguru Bachira",
-    country: "Japan",
-    club: "FC Barcha",
-    rating: 91,
-    position: "RW",
-    skills: [
-      "Monster Dribble",
-      "Elastic Dribble",
-      "Nutmeg",
-      "Creative Pass",
-      "1v1 Break"
-    ],
-    flow: "Monster"
-  },
-
-  {
-    name: "Lavinho",
-    country: "Brazil",
-    club: "FC Barcha",
-    rating: 97,
-    position: "ST",
-    skills: [
-      "Street Dribble",
-      "Elastic Touch",
-      "Rainbow Flick",
-      "Dance Step",
-      "Brazilian Flow"
-    ],
-    flow: "Street"
-  },
-
-  {
-    name: "Shoei Barou",
-    country: "Japan",
-    club: "Ubers",
-    rating: 95,
-    position: "ST",
-    skills: [
-      "Predator Eye",
-      "Chop Feint",
-      "Devil Shot",
-      "King's Run",
-      "Power Finish"
-    ],
-    flow: "King"
-  },
-
-  {
-    name: "Don Lorenzo",
-    country: "Japan",
-    club: "Ubers",
-    rating: 94,
-    position: "CB",
-    skills: [
-      "Ace Eater",
-      "Zombie Dribble",
-      "Defensive Lock",
-      "Ball Steal",
-      "Counter Attack"
-    ],
-    flow: "Lockdown"
-  },
-
-  {
-    name: "Marc Snuffy",
-    country: "Italy",
-    club: "Ubers",
-    rating: 97,
-    position: "ST",
-    skills: [
-      "Tactical Mastery",
-      "Predator Eye",
-      "Perfect Assist",
-      "Strategic Finish",
-      "Team Control"
-    ],
-    flow: "Master"
-  },
-
-  {
-    name: "Oliver Aiku",
-    country: "Japan",
-    club: "Ubers",
-    rating: 89,
-    position: "CB",
-    skills: [
-      "Defensive Reading",
-      "Aerial Control",
-      "Man Marking",
-      "Interception",
-      "Counter Pass"
-    ],
-    flow: "Lockdown"
-  },
-
-  {
-    name: "Ikki Niko",
-    country: "Japan",
-    club: "Ubers",
-    rating: 87,
-    position: "CB",
-    skills: [
-      "Spatial Awareness",
-      "Interception",
-      "Field Reading",
-      "Build Up",
-      "Prediction"
-    ],
-    flow: "Vision"
-  },
-
-  {
-    name: "Seishiro Nagi",
-    country: "Japan",
-    club: "Manshine City",
-    rating: 94,
-    position: "ST",
-    skills: [
-      "Perfect Trap",
-      "Five-Stage Revolver",
-      "Fake Volley",
-      "Trap Control",
-      "Impossible Finish"
-    ],
-    flow: "Trapper"
-  },
-
-  {
-    name: "Reo Mikage",
-    country: "Japan",
-    club: "Manshine City",
-    rating: 90,
-    position: "CM",
-    skills: [
-      "Chameleon",
-      "Copy Skill",
-      "Creative Pass",
-      "Adaptive Play",
-      "Vision"
-    ],
-    flow: "Chameleon"
-  },
-
-  {
-    name: "Chris Prince",
-    country: "England",
-    club: "Manshine City",
-    rating: 98,
-    position: "ST",
-    skills: [
-      "Perfect Body",
-      "Power Shot",
-      "Acceleration",
-      "Physical Mastery",
-      "Super Strike"
-    ],
-    flow: "Master"
-  },
-
-  {
-    name: "Hyoma Chigiri",
-    country: "Japan",
-    club: "Manshine City",
-    rating: 91,
-    position: "LW",
-    skills: [
-      "44 Panther",
-      "Speed Burst",
-      "Red Panther",
-      "Breakaway",
-      "Acceleration"
-    ],
-    flow: "Godspeed"
-  },
-
-  {
-    name: "Agi",
-    country: "England",
-    club: "Manshine City",
-    rating: 88,
-    position: "ST",
-    skills: [
-      "Physical Control",
-      "Power Run",
-      "Target Play",
-      "Aerial Duel",
-      "Hold Up"
-    ],
-    flow: "Power"
-  },
-
-  {
-    name: "Rensuke Kunigami",
-    country: "Japan",
-    club: "Bastard München",
-    rating: 89,
-    position: "ST",
-    skills: [
-      "Lefty Shot",
-      "Power Shot",
-      "Midrange Strike",
-      "Physical Burst",
-      "Direct Run"
-    ],
-    flow: "Hero"
-  },
-
-  {
-    name: "Yo Hiori",
-    country: "Japan",
-    club: "Bastard München",
-    rating: 89,
-    position: "AM",
-    skills: [
-      "Laser Pass",
-      "Threaded Pass",
-      "Field Vision",
-      "Through Ball",
-      "Precision Cross"
-    ],
-    flow: "Vision"
-  },
-
-  {
-    name: "Kenyu Yukimiya",
-    country: "Japan",
-    club: "Bastard München",
-    rating: 88,
-    position: "LW",
-    skills: [
-      "Gyro Shot",
-      "Dribble Drive",
-      "1v1 Duel",
-      "Cut Inside",
-      "Mirage Shot"
-    ],
-    flow: "Dribbler"
-  },
-
-  {
-    name: "Alexis Ness",
-    country: "Germany",
-    club: "Bastard München",
-    rating: 88,
-    position: "AM",
-    skills: [
-      "Magic Pass",
-      "Curve Pass",
-      "Assist Chain",
-      "Link Up",
-      "Creative Feed"
-    ],
-    flow: "Playmaker"
-  },
-
-  {
-    name: "Gin Gagamaru",
-    country: "Japan",
-    club: "Bastard München",
-    rating: 85,
-    position: "GK",
-    skills: [
-      "Super Save",
-      "Reflex",
-      "Aerial Reach",
-      "Acrobatic Block",
-      "Counter Launch"
-    ],
-    flow: "Guardian"
-  },
-
-  {
-    name: "Sae Itoshi",
-    country: "Japan",
-    club: "Japan U-20",
-    rating: 97,
-    position: "AM",
-    skills: [
-      "Perfect Pass",
-      "Control Tower",
-      "Threaded Assist",
-      "Field Domination",
-      "Precision Kick"
-    ],
-    flow: "Vision"
-  },
-
-  {
-    name: "Shuto Sendo",
-    country: "Japan",
-    club: "Ubers",
-    rating: 82,
-    position: "ST",
-    skills: [
-      "Aerial Finish",
-      "Power Header",
-      "Positioning",
-      "Link Up",
-      "Volley"
-    ],
-    flow: null
-  },
-
-  {
-    name: "Jyubei Aryu",
-    country: "Japan",
-    club: "Ubers",
-    rating: 85,
-    position: "CB",
-    skills: [
-      "Long Reach",
-      "Aerial Block",
-      "Header",
-      "Defensive Range",
-      "Height Advantage"
-    ],
-    flow: "Guardian"
-  },
-
-  {
-    name: "Eita Otoya",
-    country: "Japan",
-    club: "FC Barcha",
-    rating: 86,
-    position: "RW",
-    skills: [
-      "Stealth Run",
-      "Off-Ball Burst",
-      "Blindside",
-      "Quick Pass",
-      "Speed Cut"
-    ],
-    flow: "Shadow"
-  },
-
-  {
-    name: "Aoshi Tokimitsu",
-    country: "Japan",
-    club: "Manshine City",
-    rating: 84,
-    position: "CM",
-    skills: [
-      "Physical Burst",
-      "Relentless Press",
-      "Recovery",
-      "Power Run",
-      "Ball Shield"
-    ],
-    flow: "Power"
-  },
-
-  {
-    name: "Zantetsu Tsurugi",
-    country: "Japan",
-    club: "Manshine City",
-    rating: 82,
-    position: "RW",
-    skills: [
-      "Explosive Start",
-      "Straight Run",
-      "Speed Burst",
-      "Acceleration",
-      "Direct Run"
-    ],
-    flow: "Godspeed"
-  },
-
-  // NEL VERSIONS
-
-  {
-    name: "Yoichi Isagi - NEL",
-    country: "Japan",
-    club: "Bastard München",
-    rating: 96,
-    position: "ST",
-    skills: [
-      "Meta Vision",
-      "Direct Shot",
-      "Two-Gun Volley",
-      "Adaptation",
-      "Spatial Awareness"
-    ],
-    flow: "Meta Vision"
-  },
-
-  {
-    name: "Michael Kaiser - NEL",
-    country: "Germany",
-    club: "Bastard München",
-    rating: 98,
-    position: "ST",
-    skills: [
-      "Kaiser Impact",
-      "Kaiser Impact Magnus",
-      "Predator Eye",
-      "Kaiser Vision",
-      "Perfect Finish"
-    ],
-    flow: "Emperor"
-  },
-
-  {
-    name: "Rin Itoshi - NEL",
-    country: "Japan",
-    club: "Paris X Gen",
-    rating: 98,
-    position: "ST",
-    skills: [
-      "Destroyer Mode",
-      "Puppet Control",
-      "Precision Kick",
-      "Spatial Reading",
-      "Flow"
-    ],
-    flow: "Destroyer"
-  },
-
-  {
-    name: "Shoei Barou - NEL",
-    country: "Japan",
-    club: "Ubers",
-    rating: 96,
-    position: "ST",
-    skills: [
-      "Predator Eye",
-      "Chop Feint",
-      "Devil Shot",
-      "King's Run",
-      "Predator Finish"
-    ],
-    flow: "King"
-  },
-
-  {
-    name: "Seishiro Nagi - NEL",
-    country: "Japan",
-    club: "Manshine City",
-    rating: 95,
-    position: "ST",
-    skills: [
-      "Five-Stage Revolver",
-      "Perfect Trap",
-      "Fake Volley",
-      "Trap Control",
-      "Adaptation"
-    ],
-    flow: "Trapper"
-  },
-
-  {
-    name: "Meguru Bachira - NEL",
-    country: "Japan",
-    club: "FC Barcha",
-    rating: 93,
-    position: "RW",
-    skills: [
-      "Monster Dribble",
-      "Elastic Touch",
-      "Nutmeg",
-      "Creative Pass",
-      "Solo Break"
-    ],
-    flow: "Monster"
-  },
-
-  {
-    name: "Hyoma Chigiri - NEL",
-    country: "Japan",
-    club: "Manshine City",
-    rating: 93,
-    position: "LW",
-    skills: [
-      "44 Panther",
-      "Speed Burst",
-      "Red Panther",
-      "Breakaway",
-      "Acceleration"
-    ],
-    flow: "Godspeed"
-  },
-
-  {
-    name: "Reo Mikage - NEL",
-    country: "Japan",
-    club: "Manshine City",
-    rating: 92,
-    position: "CM",
-    skills: [
-      "Chameleon",
-      "Copy Skill",
-      "Creative Pass",
-      "Adaptation",
-      "Field Vision"
-    ],
-    flow: "Chameleon"
-  },
-
-  {
-    name: "Rensuke Kunigami - NEL",
-    country: "Japan",
-    club: "Bastard München",
-    rating: 92,
-    position: "ST",
-    skills: [
-      "Lefty Shot",
-      "Power Shot",
-      "Midrange Strike",
-      "Physical Burst",
-      "Direct Run"
-    ],
-    flow: "Hero"
-  },
-
-  {
-    name: "Hiori Yo - NEL",
-    country: "Japan",
-    club: "Bastard München",
-    rating: 92,
-    position: "AM",
-    skills: [
-      "Laser Pass",
-      "Threaded Pass",
-      "Field Vision",
-      "Through Ball",
-      "Precision Cross"
-    ],
-    flow: "Vision"
-  },
-
-  {
-    name: "Charles Chevalier - NEL",
-    country: "France",
-    club: "Paris X Gen",
-    rating: 95,
-    position: "AM",
-    skills: [
-      "Killer Pass",
-      "Threaded Pass",
-      "Counter Pass",
-      "Vision",
-      "Creative Assist"
-    ],
-    flow: "Playmaker"
-  },
-
-  {
-    name: "Don Lorenzo - NEL",
-    country: "Japan",
-    club: "Ubers",
-    rating: 95,
-    position: "CB",
-    skills: [
-      "Ace Eater",
-      "Zombie Dribble",
-      "Defensive Lock",
-      "Ball Steal",
-      "Counter Attack"
-    ],
-    flow: "Lockdown"
-  },
-
-  // LOWER RATED NEL / OTHER PLAYERS
-
-  {
-    name: "Kiyoshi Fujimoto",
-    country: "Japan",
-    club: "Ajax",
-    rating: 78,
-    position: "ST",
-    skills: [
-      "Quick Step",
-      "Sharp Pass",
-      "Direct Shot",
-      "Press Break",
-      "Counter Run"
-    ],
-    flow: null
-  },
-
-  {
-    name: "Yohei Tanaka",
-    country: "Japan",
-    club: "PSV",
-    rating: 76,
-    position: "CM",
-    skills: [
-      "Quick Pass",
-      "Dribble Cut",
-      "Sprint",
-      "Low Shot",
-      "Press"
-    ],
-    flow: null
-  },
-
-  {
-    name: "Kenyu Aoba",
-    country: "Japan",
-    club: "Benfica",
-    rating: 80,
-    position: "RW",
-    skills: [
-      "Curve Shot",
-      "Ball Control",
-      "Quick Turn",
-      "Through Pass",
-      "Counter"
-    ],
-    flow: null
-  },
-
-  {
-    name: "Shizuka Haiji",
-    country: "Japan",
-    club: "Porto",
-    rating: 75,
-    position: "LW",
-    skills: [
-      "Fast Dribble",
-      "Cross",
-      "Sprint",
-      "Long Pass",
-      "Finish"
-    ],
-    flow: null
-  },
-
-  {
-    name: "Kota Sakamoto",
-    country: "Japan",
-    club: "Real Madrid",
-    rating: 81,
-    position: "CM",
-    skills: [
-      "Power Run",
-      "Press",
-      "Shot",
-      "Pass",
-      "Recovery"
-    ],
-    flow: null
-  }
-];
-
-const PLAYERS = {};
-
-for (const player of PLAYER_DATA) {
-  PLAYERS[player.name] = player;
-}
-
-// ===============================
-// SMART ALIASES
-// ===============================
-
-const PLAYER_ALIASES = {
-  isagi: "Yoichi Isagi",
-  yoichi: "Yoichi Isagi",
-  yoichiisagi: "Yoichi Isagi",
-
-  kaiser: "Michael Kaiser",
-  michael: "Michael Kaiser",
-  micheal: "Michael Kaiser",
-  michaelkaiser: "Michael Kaiser",
-
-  noa: "Noel Noa",
-  noel: "Noel Noa",
-
-  rin: "Rin Itoshi",
-  rinitoshi: "Rin Itoshi",
-
-  loki: "Julian Loki",
-  julianloki: "Julian Loki",
-
-  shidou: "Ryusei Shidou",
-  ryusei: "Ryusei Shidou",
-
-  bachira: "Meguru Bachira",
-  barou: "Shoei Barou",
-  nagi: "Seishiro Nagi",
-  reo: "Reo Mikage",
-  kunigami: "Rensuke Kunigami",
-  chigiri: "Hyoma Chigiri",
-  hiori: "Yo Hiori",
-  yukimiya: "Kenyu Yukimiya",
-  sae: "Sae Itoshi",
-  lavinho: "Lavinho",
-  snuffy: "Marc Snuffy",
-  lorenzo: "Don Lorenzo"
-};
-
-// ===============================
-// FLOW SYSTEM
-// ===============================
+const characters = Object.fromEntries(
+  CHARACTERS.map(c => [
+    c[0].toLowerCase(),
+    {
+      name: c[0],
+      rating: c[1],
+      position: c[2],
+      country: c[3],
+      club: c[4],
+      skills: c[5]
+    }
+  ])
+);
+
+/* =========================
+   FLOWS
+========================= */
 
 const FLOWS = {
-  "Meta Vision": {
-    rarity: "Legendary",
-    requiredRating: 88,
-    abilities: [
-      {
-        name: "Meta Vision",
-        power: 35,
-        stamina: 0,
-        cooldown: 2
-      },
-      {
-        name: "Direct Counter",
-        power: 40,
-        stamina: 4,
-        cooldown: 3
-      },
-      {
-        name: "Spatial Reading",
-        power: 38,
-        stamina: 3,
-        cooldown: 2
-      },
-      {
-        name: "Two-Gun Volley",
-        power: 55,
-        stamina: 8,
-        cooldown: 4
-      },
-      {
-        name: "Predicted Route",
-        power: 43,
-        stamina: 4,
-        cooldown: 3
-      },
-      {
-        name: "Field Command",
-        power: 48,
-        stamina: 6,
-        cooldown: 4
-      }
-    ]
+  "meta vision": {
+    name: "Meta Vision",
+    abilities: ["Predicted Play", "Spatial Reading", "Vision Shot"]
   },
-
-  Emperor: {
-    rarity: "Mythic",
-    requiredRating: 92,
-    abilities: [
-      {
-        name: "Kaiser Impact",
-        power: 55,
-        stamina: 8,
-        cooldown: 4
-      },
-      {
-        name: "Kaiser Impact Magnus",
-        power: 68,
-        stamina: 10,
-        cooldown: 5
-      },
-      {
-        name: "Predator Eye",
-        power: 48,
-        stamina: 5,
-        cooldown: 3
-      },
-      {
-        name: "Emperor Vision",
-        power: 43,
-        stamina: 4,
-        cooldown: 3
-      },
-      {
-        name: "Emperor Run",
-        power: 45,
-        stamina: 6,
-        cooldown: 3
-      },
-      {
-        name: "Perfect Finish",
-        power: 62,
-        stamina: 9,
-        cooldown: 5
-      }
-    ]
+  "emperor": {
+    name: "Emperor",
+    abilities: ["Emperor's Eye", "Kaiser Impact", "Kaiser Impact Magnus"]
   },
-
-  Destroyer: {
-    rarity: "Mythic",
-    requiredRating: 90,
-    abilities: [
-      {
-        name: "Destroyer Shot",
-        power: 55,
-        stamina: 8,
-        cooldown: 4
-      },
-      {
-        name: "Spatial Instinct",
-        power: 38,
-        stamina: 3,
-        cooldown: 2
-      },
-      {
-        name: "Explosive Volley",
-        power: 57,
-        stamina: 8,
-        cooldown: 4
-      },
-      {
-        name: "Destroyer Dribble",
-        power: 48,
-        stamina: 6,
-        cooldown: 3
-      },
-      {
-        name: "Goal Hunter",
-        power: 50,
-        stamina: 6,
-        cooldown: 3
-      },
-      {
-        name: "Predator Finish",
-        power: 60,
-        stamina: 9,
-        cooldown: 5
-      }
-    ]
+  "destroyer": {
+    name: "Destroyer",
+    abilities: ["Predator Instinct", "Destroyer Shot", "Pressure Break"]
   },
-
-  Godspeed: {
-    rarity: "Mythic",
-    requiredRating: 90,
-    abilities: [
-      {
-        name: "Godspeed",
-        power: 55,
-        stamina: 7,
-        cooldown: 3
-      },
-      {
-        name: "Lightning Run",
-        power: 50,
-        stamina: 6,
-        cooldown: 3
-      },
-      {
-        name: "Speed Break",
-        power: 46,
-        stamina: 5,
-        cooldown: 2
-      },
-      {
-        name: "Perfect Timing",
-        power: 40,
-        stamina: 4,
-        cooldown: 3
-      },
-      {
-        name: "Lightning Finish",
-        power: 53,
-        stamina: 7,
-        cooldown: 4
-      }
-    ]
+  "godspeed": {
+    name: "Godspeed",
+    abilities: ["Lightning Run", "Acceleration", "Godspeed Finish"]
   },
-
-  Monster: {
-    rarity: "Legendary",
-    requiredRating: 84,
-    abilities: [
-      {
-        name: "Monster Dribble",
-        power: 47,
-        stamina: 5,
-        cooldown: 2
-      },
-      {
-        name: "Elastic Touch",
-        power: 44,
-        stamina: 4,
-        cooldown: 2
-      },
-      {
-        name: "Nutmeg",
-        power: 52,
-        stamina: 5,
-        cooldown: 3
-      },
-      {
-        name: "Monster Pass",
-        power: 41,
-        stamina: 3,
-        cooldown: 2
-      },
-      {
-        name: "Creative Finish",
-        power: 47,
-        stamina: 5,
-        cooldown: 3
-      }
-    ]
+  "monster": {
+    name: "Monster",
+    abilities: ["Monster Dribble", "Instinct", "Monster Finish"]
   },
-
-  King: {
-    rarity: "Legendary",
-    requiredRating: 88,
-    abilities: [
-      {
-        name: "King's Shot",
-        power: 50,
-        stamina: 6,
-        cooldown: 3
-      },
-      {
-        name: "Predator Eye",
-        power: 47,
-        stamina: 5,
-        cooldown: 3
-      },
-      {
-        name: "Chop Feint",
-        power: 43,
-        stamina: 4,
-        cooldown: 2
-      },
-      {
-        name: "King's Run",
-        power: 45,
-        stamina: 5,
-        cooldown: 3
-      },
-      {
-        name: "Devil's Finish",
-        power: 57,
-        stamina: 8,
-        cooldown: 4
-      }
-    ]
+  "king": {
+    name: "King",
+    abilities: ["King's Shot", "Predator Eye", "Charging King"]
   },
-
-  Street: {
-    rarity: "Legendary",
-    requiredRating: 84,
-    abilities: [
-      {
-        name: "Street Dribble",
-        power: 46,
-        stamina: 5,
-        cooldown: 2
-      },
-      {
-        name: "Rainbow Flick",
-        power: 50,
-        stamina: 6,
-        cooldown: 3
-      },
-      {
-        name: "Dance Step",
-        power: 44,
-        stamina: 4,
-        cooldown: 2
-      },
-      {
-        name: "Elastic Touch",
-        power: 45,
-        stamina: 4,
-        cooldown: 2
-      },
-      {
-        name: "Street Finish",
-        power: 48,
-        stamina: 6,
-        cooldown: 3
-      }
-    ]
+  "street": {
+    name: "Street",
+    abilities: ["Street Dribble", "Fake Out", "Street Finish"]
   },
-
-  Trapper: {
-    rarity: "Legendary",
-    requiredRating: 88,
-    abilities: [
-      {
-        name: "Perfect Trap",
-        power: 45,
-        stamina: 3,
-        cooldown: 2
-      },
-      {
-        name: "Fake Volley",
-        power: 50,
-        stamina: 6,
-        cooldown: 3
-      },
-      {
-        name: "Trap Control",
-        power: 43,
-        stamina: 3,
-        cooldown: 2
-      },
-      {
-        name: "Impossible Finish",
-        power: 58,
-        stamina: 8,
-        cooldown: 4
-      },
-      {
-        name: "Trap Shot",
-        power: 53,
-        stamina: 7,
-        cooldown: 4
-      }
-    ]
+  "playmaker": {
+    name: "Playmaker",
+    abilities: ["Thread Pass", "Vision", "Perfect Assist"]
   },
-
-  Playmaker: {
-    rarity: "Legendary",
-    requiredRating: 86,
-    abilities: [
-      {
-        name: "Killer Pass",
-        power: 45,
-        stamina: 4,
-        cooldown: 2
-      },
-      {
-        name: "Threaded Pass",
-        power: 43,
-        stamina: 3,
-        cooldown: 2
-      },
-      {
-        name: "Field Command",
-        power: 46,
-        stamina: 5,
-        cooldown: 3
-      },
-      {
-        name: "Through Ball",
-        power: 48,
-        stamina: 4,
-        cooldown: 3
-      },
-      {
-        name: "Perfect Assist",
-        power: 54,
-        stamina: 6,
-        cooldown: 4
-      }
-    ]
+  "guardian": {
+    name: "Guardian",
+    abilities: ["Lockdown", "Interception", "Defensive Wall"]
   },
-
-  Lockdown: {
-    rarity: "Legendary",
-    requiredRating: 86,
-    abilities: [
-      {
-        name: "Ace Eater",
-        power: 48,
-        stamina: 5,
-        cooldown: 3
-      },
-      {
-        name: "Defensive Lock",
-        power: 50,
-        stamina: 4,
-        cooldown: 3
-      },
-      {
-        name: "Ball Steal",
-        power: 44,
-        stamina: 3,
-        cooldown: 2
-      },
-      {
-        name: "Interception",
-        power: 45,
-        stamina: 3,
-        cooldown: 2
-      },
-      {
-        name: "Counter Launch",
-        power: 47,
-        stamina: 4,
-        cooldown: 3
-      }
-    ]
-  },
-
-  Vision: {
-    rarity: "Rare",
-    requiredRating: 80,
-    abilities: [
-      {
-        name: "Field Vision",
-        power: 38,
-        stamina: 2,
-        cooldown: 2
-      },
-      {
-        name: "Spatial Reading",
-        power: 40,
-        stamina: 3,
-        cooldown: 2
-      },
-      {
-        name: "Prediction",
-        power: 42,
-        stamina: 3,
-        cooldown: 3
-      },
-      {
-        name: "Through Ball",
-        power: 43,
-        stamina: 3,
-        cooldown: 2
-      },
-      {
-        name: "Counter Position",
-        power: 41,
-        stamina: 3,
-        cooldown: 2
-      }
-    ]
-  },
-
-  Hero: {
-    rarity: "Rare",
-    requiredRating: 82,
-    abilities: [
-      {
-        name: "Hero Shot",
-        power: 48,
-        stamina: 6,
-        cooldown: 3
-      },
-      {
-        name: "Lefty Shot",
-        power: 46,
-        stamina: 5,
-        cooldown: 3
-      },
-      {
-        name: "Power Run",
-        power: 43,
-        stamina: 5,
-        cooldown: 3
-      },
-      {
-        name: "Direct Run",
-        power: 40,
-        stamina: 4,
-        cooldown: 2
-      },
-      {
-        name: "Physical Burst",
-        power: 42,
-        stamina: 5,
-        cooldown: 3
-      }
-    ]
-  },
-
-  Chameleon: {
-    rarity: "Legendary",
-    requiredRating: 86,
-    abilities: [
-      {
-        name: "Copy Skill",
-        power: 45,
-        stamina: 4,
-        cooldown: 3
-      },
-      {
-        name: "Chameleon",
-        power: 48,
-        stamina: 5,
-        cooldown: 3
-      },
-      {
-        name: "Adaptation",
-        power: 44,
-        stamina: 3,
-        cooldown: 2
-      },
-      {
-        name: "Creative Pass",
-        power: 43,
-        stamina: 4,
-        cooldown: 2
-      },
-      {
-        name: "Mirror Play",
-        power: 50,
-        stamina: 6,
-        cooldown: 4
-      }
-    ]
-  },
-
-  Dribbler: {
-    rarity: "Rare",
-    requiredRating: 80,
-    abilities: [
-      {
-        name: "Gyro Dribble",
-        power: 43,
-        stamina: 4,
-        cooldown: 2
-      },
-      {
-        name: "1v1 Duel",
-        power: 47,
-        stamina: 5,
-        cooldown: 3
-      },
-      {
-        name: "Cut Inside",
-        power: 44,
-        stamina: 4,
-        cooldown: 2
-      },
-      {
-        name: "Mirage Shot",
-        power: 48,
-        stamina: 6,
-        cooldown: 3
-      },
-      {
-        name: "Dribble Drive",
-        power: 45,
-        stamina: 5,
-        cooldown: 3
-      }
-    ]
-  },
-
-  Guardian: {
-    rarity: "Rare",
-    requiredRating: 80,
-    abilities: [
-      {
-        name: "Super Save",
-        power: 50,
-        stamina: 3,
-        cooldown: 3
-      },
-      {
-        name: "Reflex",
-        power: 45,
-        stamina: 2,
-        cooldown: 2
-      },
-      {
-        name: "Aerial Reach",
-        power: 43,
-        stamina: 3,
-        cooldown: 2
-      },
-      {
-        name: "Acrobatic Block",
-        power: 48,
-        stamina: 4,
-        cooldown: 3
-      },
-      {
-        name: "Counter Launch",
-        power: 45,
-        stamina: 3,
-        cooldown: 2
-      }
-    ]
-  },
-
-  Shadow: {
-    rarity: "Rare",
-    requiredRating: 78,
-    abilities: [
-      {
-        name: "Stealth Run",
-        power: 43,
-        stamina: 4,
-        cooldown: 2
-      },
-      {
-        name: "Blindside",
-        power: 46,
-        stamina: 4,
-        cooldown: 3
-      },
-      {
-        name: "Shadow Cut",
-        power: 44,
-        stamina: 4,
-        cooldown: 2
-      },
-      {
-        name: "Quick Pass",
-        power: 39,
-        stamina: 2,
-        cooldown: 2
-      },
-      {
-        name: "Off-Ball Burst",
-        power: 42,
-        stamina: 3,
-        cooldown: 2
-      }
-    ]
-  },
-
-  Power: {
-    rarity: "Rare",
-    requiredRating: 80,
-    abilities: [
-      {
-        name: "Power Shot",
-        power: 49,
-        stamina: 6,
-        cooldown: 3
-      },
-      {
-        name: "Power Run",
-        power: 43,
-        stamina: 5,
-        cooldown: 3
-      },
-      {
-        name: "Physical Burst",
-        power: 42,
-        stamina: 5,
-        cooldown: 3
-      },
-      {
-        name: "Body Shield",
-        power: 40,
-        stamina: 3,
-        cooldown: 2
-      },
-      {
-        name: "Strong Finish",
-        power: 51,
-        stamina: 7,
-        cooldown: 4
-      }
-    ]
-  },
-
-  Master: {
-    rarity: "Mythic",
-    requiredRating: 94,
-    abilities: [
-      {
-        name: "Master Touch",
-        power: 55,
-        stamina: 3,
-        cooldown: 2
-      },
-      {
-        name: "Perfect Finish",
-        power: 65,
-        stamina: 8,
-        cooldown: 5
-      },
-      {
-        name: "Tactical Mastery",
-        power: 58,
-        stamina: 5,
-        cooldown: 4
-      },
-      {
-        name: "World-Class Vision",
-        power: 60,
-        stamina: 4,
-        cooldown: 3
-      },
-      {
-        name: "Strategic Play",
-        power: 56,
-        stamina: 5,
-        cooldown: 4
-      }
-    ]
+  "master": {
+    name: "Master",
+    abilities: ["Perfect Control", "Tactical Vision", "Master Finish"]
   }
 };
 
-// ===============================
-// RESOLVERS
-// ===============================
+/* =========================
+   ALIASES
+========================= */
 
-function levenshtein(a, b) {
-  const matrix = [];
+const aliases = {
+  "kaiser": "Michael Kaiser",
+  "micheal kaiser": "Michael Kaiser",
+  "michael": "Michael Kaiser",
+  "isagi": "Yoichi Isagi",
+  "yoichi": "Yoichi Isagi",
+  "rin": "Rin Itoshi",
+  "shidou": "Ryusei Shidou",
+  "shidou ryusei": "Ryusei Shidou",
+  "barou": "Shoei Barou",
+  "nagi": "Seishiro Nagi",
+  "bachira": "Meguru Bachira",
+  "chigiri": "Hyoma Chigiri",
+  "loki": "Julian Loki",
+  "noa": "Noel Noa",
+  "lavinho": "Lavinho",
+  "snuffy": "Marc Snuffy",
+  "lorenzo": "Don Lorenzo"
+};
 
-  for (let i = 0; i <= b.length; i++) {
-    matrix[i] = [i];
-  }
-
-  for (let j = 0; j <= a.length; j++) {
-    matrix[0][j] = j;
-  }
-
-  for (let i = 1; i <= b.length; i++) {
-    for (let j = 1; j <= a.length; j++) {
-      matrix[i][j] =
-        b[i - 1] === a[j - 1]
-          ? matrix[i - 1][j - 1]
-          : Math.min(
-              matrix[i - 1][j - 1] + 1,
-              matrix[i][j - 1] + 1,
-              matrix[i - 1][j] + 1
-            );
-    }
-  }
-
-  return matrix[b.length][a.length];
+function normalize(s) {
+  return String(s).toLowerCase().trim();
 }
 
-function resolvePlayer(input) {
-  const key = normalize(input);
+function findCharacter(input) {
+  const q = normalize(input);
 
-  if (PLAYER_ALIASES[key]) {
-    return PLAYER_ALIASES[key];
-  }
+  if (aliases[q]) return characters[aliases[q].toLowerCase()];
+  if (characters[q]) return characters[q];
 
-  const exact = Object.keys(PLAYERS).find(
-    name => normalize(name) === key
+  const found = Object.values(characters).find(c =>
+    normalize(c.name).includes(q) || q.includes(normalize(c.name))
   );
 
-  if (exact) return exact;
-
-  let best = null;
-  let distance = Infinity;
-
-  for (const name of Object.keys(PLAYERS)) {
-    const d = levenshtein(key, normalize(name));
-
-    if (d < distance) {
-      distance = d;
-      best = name;
-    }
-  }
-
-  return distance <= Math.max(2, Math.floor(key.length * 0.35))
-    ? best
-    : null;
+  return found || null;
 }
 
-function resolveFlow(input) {
-  const key = normalize(input);
+function findFlow(input) {
+  const q = normalize(input);
 
-  const exact = Object.keys(FLOWS).find(
-    flow => normalize(flow) === key
-  );
+  if (FLOWS[q]) return FLOWS[q];
 
-  if (exact) return exact;
-
-  let best = null;
-  let distance = Infinity;
-
-  for (const flow of Object.keys(FLOWS)) {
-    const d = levenshtein(key, normalize(flow));
-
-    if (d < distance) {
-      distance = d;
-      best = flow;
-    }
-  }
-
-  return distance <= Math.max(2, Math.floor(key.length * 0.4))
-    ? best
-    : null;
-}
-
-function resolveClub(input) {
-  const key = normalize(input);
-
-  if (CLUB_ALIASES[key]) {
-    return CLUB_ALIASES[key];
-  }
-
-  const exact = CLUBS.find(
-    club => normalize(club) === key
-  );
-
-  if (exact) return exact;
-
-  return CLUBS.find(
-    club => normalize(club).includes(key)
+  return Object.values(FLOWS).find(f =>
+    normalize(f.name).includes(q)
   ) || null;
 }
 
-// ===============================
-// USER DATA
-// ===============================
+/* =========================
+   PLAYER DATA
+========================= */
 
-function getUser(userId) {
-  if (!db.players[userId]) {
-    db.players[userId] = {
-      coins: 1000,
+function getPlayer(id) {
+  if (!db[id]) {
+    db[id] = {
+      coins: 10000,
       gems: 100,
       level: 1,
       xp: 0,
-
       rating: 60,
       position: "ST",
-
-      career: "Rookie",
       country: "Japan",
-      club: "No Club",
-
-      activePlayer: null,
+      club: "Free Agent",
+      career: "Rookie",
       players: [],
-
-      stamina: 100,
-
+      activePlayer: null,
       unlockedFlows: [],
       activeFlow: null,
-      flowCooldowns: {},
-
-      clubInterest: {},
-      offers: [],
-
+      flowCooldown: 0,
+      stamina: 100,
       trophies: [],
-
-      transferValue: 100000,
-
       stats: {
         matches: 0,
+        goals: 0,
+        assists: 0,
         wins: 0,
         losses: 0,
         draws: 0,
-        goals: 0,
-        assists: 0,
+        motm: 0,
         bestRating: 0
-      }
+      },
+      clubInterest: [],
+      offers: []
     };
 
-    saveDB();
+    save();
   }
 
-  const user = db.players[userId];
-
-  user.players ??= [];
-  user.unlockedFlows ??= [];
-  user.flowCooldowns ??= {};
-  user.clubInterest ??= {};
-  user.offers ??= [];
-  user.trophies ??= [];
-
-  return user;
+  return db[id];
 }
 
-// ===============================
-// XP
-// ===============================
+/* =========================
+   XP / LEVEL
+========================= */
 
-function addXP(user, amount) {
-  user.xp += amount;
+function addXP(p, amount) {
+  p.xp += amount;
 
-  while (user.xp >= xpNeeded(user.level)) {
-    user.xp -= xpNeeded(user.level);
-    user.level++;
+  while (p.xp >= p.level * 100) {
+    p.xp -= p.level * 100;
+    p.level++;
+    p.rating = Math.min(99, p.rating + 1);
+  }
+}
 
-    if (user.rating < 99) {
-      user.rating++;
+/* =========================
+   REALISTIC MATCH RATING
+========================= */
+
+function calculateRating(stats, result, position = "ST") {
+  let rating = 6.2;
+
+  rating += stats.goals * 0.9;
+  rating += stats.assists * 0.6;
+  rating += stats.shotsOnTarget * 0.12;
+  rating += stats.keyPasses * 0.12;
+  rating += stats.dribbles * 0.08;
+  rating += stats.tackles * (position === "CB" ? 0.12 : 0.05);
+  rating += stats.interceptions * (position === "CB" ? 0.1 : 0.04);
+
+  rating -= stats.missedChances * 0.18;
+  rating -= stats.badPasses * 0.08;
+  rating -= stats.turnovers * 0.05;
+
+  if (result === "win") rating += 0.3;
+  if (result === "loss") rating -= 0.3;
+
+  /*
+    Rough real-football scale:
+    6.0 = poor/average
+    6.5 = okay
+    7.0 = solid
+    7.5 = good
+    8.0 = very good
+    9.0 = outstanding
+    10.0 = extremely rare
+  */
+
+  return Math.max(4.5, Math.min(10, Number(rating.toFixed(1))));
+}
+
+/* =========================
+   MATCH SYSTEM
+========================= */
+
+const matches = new Map();
+
+function createMatch(userId) {
+  const p = getPlayer(userId);
+
+  const player = p.activePlayer
+    ? findCharacter(p.activePlayer)
+    : null;
+
+  const rating = player ? player.rating : p.rating;
+
+  const match = {
+    userId,
+    rating,
+    position: player?.position || p.position,
+    score: 0,
+    opponentScore: 0,
+    minute: 1,
+    finished: false,
+    bestMoment: false,
+    worstMoment: false,
+    flowUsed: false,
+    stats: {
+      goals: 0,
+      assists: 0,
+      shotsOnTarget: 0,
+      keyPasses: 0,
+      dribbles: 0,
+      tackles: 0,
+      interceptions: 0,
+      missedChances: 0,
+      badPasses: 0,
+      turnovers: 0
     }
-  }
-}
-
-// ===============================
-// ROLL SYSTEM
-// ===============================
-
-function rollCharacter() {
-  const chance = Math.random();
-
-  let rarity;
-
-  if (chance < 0.01) {
-    rarity = "MYTHIC";
-  } else if (chance < 0.06) {
-    rarity = "LEGENDARY";
-  } else if (chance < 0.22) {
-    rarity = "EPIC";
-  } else if (chance < 0.55) {
-    rarity = "RARE";
-  } else {
-    rarity = "COMMON";
-  }
-
-  let possible = Object.values(PLAYERS);
-
-  if (rarity === "MYTHIC") {
-    possible = possible.filter(p => p.rating >= 97);
-  }
-
-  if (rarity === "LEGENDARY") {
-    possible = possible.filter(p => p.rating >= 93);
-  }
-
-  if (rarity === "EPIC") {
-    possible = possible.filter(p => p.rating >= 87);
-  }
-
-  if (rarity === "RARE") {
-    possible = possible.filter(p => p.rating >= 80);
-  }
-
-  if (!possible.length) {
-    possible = Object.values(PLAYERS);
-  }
-
-  return {
-    rarity,
-    player: pick(possible)
   };
+
+  matches.set(userId, match);
+  return match;
 }
 
-// ===============================
-// FLOW UNLOCK
-// ===============================
+function matchEmbed(userId) {
+  const m = matches.get(userId);
+  const p = getPlayer(userId);
 
-function unlockFlow(user, flowName, userId) {
-  const flow = FLOWS[flowName];
+  const flowAllowed =
+    userId === OWNER_ID ||
+    m.bestMoment ||
+    m.worstMoment;
 
-  if (!flow) {
-    return "That Flow doesn't exist.";
-  }
+  const flowText = p.activeFlow
+    ? `${p.activeFlow}${flowAllowed ? " 🟢" : " 🔒"}`
+    : "None";
 
-  if (user.unlockedFlows.includes(flowName)) {
-    return "You already own this Flow.";
-  }
-
-  if (!isOwner(userId) && user.rating < flow.requiredRating) {
-    return `You need **${flow.requiredRating} OVR** to unlock ${flowName} Flow.`;
-  }
-
-  user.unlockedFlows.push(flowName);
-  user.activeFlow = flowName;
-
-  saveDB();
-
-  return `🔥 You unlocked **${flowName} Flow**!`;
-}
-
-// ===============================
-// MATCH SYSTEM
-// ===============================
-
-async function startMatch(userId, channel) {
-  const user = getUser(userId);
-  const ownerMode = isOwner(userId);
-
-  if (!user.activePlayer && user.players.length) {
-    user.activePlayer = user.players[0];
-  }
-
-  if (!user.activePlayer) {
-    return channel.send(
-      "You need a character first. Use `,roll`."
+  return new EmbedBuilder()
+    .setTitle("⚽ Blue Lock Match")
+    .setDescription(
+      `**${m.score} - ${m.opponentScore}**\n\n` +
+      `⏱️ Minute: **${m.minute}'**\n` +
+      `⭐ Match Rating: **${calculateRating(m.stats, m.score > m.opponentScore ? "win" : m.score < m.opponentScore ? "loss" : "draw", m.position)}**\n` +
+      `🔥 Flow: **${flowText}**`
+    )
+    .addFields(
+      { name: "Goals", value: `${m.stats.goals}`, inline: true },
+      { name: "Assists", value: `${m.stats.assists}`, inline: true },
+      { name: "Dribbles", value: `${m.stats.dribbles}`, inline: true },
+      { name: "Key Passes", value: `${m.stats.keyPasses}`, inline: true },
+      { name: "Best Moment", value: m.bestMoment ? "🔥 ACTIVE" : "—", inline: true },
+      { name: "Worst Moment", value: m.worstMoment ? "💀 ACTIVE" : "—", inline: true }
     );
-  }
+}
 
-  const player = PLAYERS[user.activePlayer];
+function matchButtons(userId) {
+  const m = matches.get(userId);
+  const p = getPlayer(userId);
 
-  const opponents = Object.values(PLAYERS).filter(
-    p => p.name !== player.name
-  );
+  const flowAllowed =
+    userId === OWNER_ID ||
+    m.bestMoment ||
+    m.worstMoment;
 
-  const opponent = pick(opponents);
-
-  let chances = 5;
-  let goals = 0;
-  let assists = 0;
-  let rating = 6.0;
-
-  let ended = false;
-
-  function matchEmbed(status = "Choose an action.") {
-    return new EmbedBuilder()
-      .setTitle(`⚽ Blue Lock Match`)
-      .setDescription(
-        `**${player.name}** vs **${opponent.name}**\n\n` +
-        `Your OVR: **${user.rating}**\n` +
-        `Opponent OVR: **${opponent.rating}**\n\n` +
-        `Chances: **${chances}**\n` +
-        `Goals: **${goals}**\n` +
-        `Assists: **${assists}**\n` +
-        `Rating: **${rating.toFixed(1)}**\n` +
-        `Stamina: **${ownerMode ? "∞" : user.stamina + "%" }**\n\n` +
-        `> ${status}`
-      );
-  }
-
-  function mainButtons() {
-    return new ActionRowBuilder().addComponents(
+  return [
+    new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`shoot:${userId}`)
-        .setLabel("SHOOT")
+        .setCustomId(`match_shoot_${userId}`)
+        .setLabel("Shoot")
         .setStyle(ButtonStyle.Danger),
 
       new ButtonBuilder()
-        .setCustomId(`pass:${userId}`)
-        .setLabel("PASS")
+        .setCustomId(`match_pass_${userId}`)
+        .setLabel("Pass")
         .setStyle(ButtonStyle.Primary),
 
       new ButtonBuilder()
-        .setCustomId(`dribble:${userId}`)
-        .setLabel("DRIBBLE")
+        .setCustomId(`match_dribble_${userId}`)
+        .setLabel("Dribble")
         .setStyle(ButtonStyle.Success),
 
       new ButtonBuilder()
-        .setCustomId(`flow:${userId}`)
-        .setLabel("FLOW")
+        .setCustomId(`match_flow_${userId}`)
+        .setLabel("Flow")
         .setStyle(ButtonStyle.Secondary)
-    );
+        .setDisabled(!flowAllowed || !p.activeFlow)
+    )
+  ];
+}
+
+/* =========================
+   MATCH ACTIONS
+========================= */
+
+async function processAction(interaction, action) {
+  const userId = interaction.user.id;
+  const m = matches.get(userId);
+
+  if (!m || m.finished) {
+    return interaction.reply({
+      content: "❌ You don't have an active match.",
+      ephemeral: true
+    });
   }
 
-  const message = await channel.send({
-    embeds: [matchEmbed()],
-    components: [mainButtons()]
-  });
+  const p = getPlayer(userId);
 
-  const collector =
-    message.createMessageComponentCollector({
-      time: 120000
+  /*
+    OWNER:
+    Every action succeeds.
+    Unlimited stamina.
+    Flow anytime.
+  */
+
+  const owner = userId === OWNER_ID;
+
+  if (action === "flow") {
+    const allowed = owner || m.bestMoment || m.worstMoment;
+
+    if (!allowed) {
+      return interaction.reply({
+        content: "🔒 Flow can only be activated during your Best Moment or Worst Moment.",
+        ephemeral: true
+      });
+    }
+
+    if (!p.activeFlow) {
+      return interaction.reply({
+        content: "❌ You don't have an active Flow.",
+        ephemeral: true
+      });
+    }
+
+    if (!owner && m.flowUsed) {
+      return interaction.reply({
+        content: "⏳ You've already used Flow in this match.",
+        ephemeral: true
+      });
+    }
+
+    m.flowUsed = true;
+
+    if (!owner) {
+      p.flowCooldown = 180;
+    }
+
+    return interaction.reply({
+      content:
+        `🔥 **${p.activeFlow} FLOW ACTIVATED!**\n` +
+        `You can now use your Flow abilities.`
     });
+  }
 
-  collector.on("collect", async interaction => {
-    if (interaction.user.id !== userId) {
-      return interaction.reply({
-        content: "This isn't your match.",
-        ephemeral: true
-      });
-    }
+  m.minute += Math.floor(Math.random() * 8) + 2;
 
-    if (ended) {
-      return interaction.reply({
-        content: "The match has already ended.",
-        ephemeral: true
-      });
-    }
+  if (m.minute > 90) m.minute = 90;
 
-    const action = interaction.customId.split(":")[0];
+  let success;
 
-    // ===========================
-    // FLOW MENU
-    // ===========================
+  if (owner) {
+    success = true;
+  } else {
+    const base = Math.max(0.35, Math.min(0.85, m.rating / 120));
+    success = Math.random() < base;
+  }
 
-    if (action === "flow") {
-      if (!user.activeFlow) {
-        return interaction.reply({
-          content:
-            "You don't have an active Flow. Unlock one with `,unlockflow <flow>`.",
-          ephemeral: true
-        });
-      }
+  if (action === "shoot") {
+    if (success) {
+      m.score++;
+      m.stats.goals++;
+      m.stats.shotsOnTarget++;
 
-      const flow = FLOWS[user.activeFlow];
+      m.bestMoment = true;
+      m.worstMoment = false;
 
-      const rows = [];
-
-      for (let i = 0; i < flow.abilities.length; i += 5) {
-        const row = new ActionRowBuilder();
-
-        for (
-          let j = i;
-          j < Math.min(i + 5, flow.abilities.length);
-          j++
-        ) {
-          const ability = flow.abilities[j];
-
-          row.addComponents(
-            new ButtonBuilder()
-              .setCustomId(
-                `ability:${userId}:${j}`
-              )
-              .setLabel(ability.name.slice(0, 80))
-              .setStyle(ButtonStyle.Secondary)
-          );
-        }
-
-        rows.push(row);
-      }
-
-      return interaction.reply({
-        content:
-          `🔥 **${user.activeFlow} Flow**\nChoose an ability:`,
-        components: rows,
-        ephemeral: true
-      });
-    }
-
-    // ===========================
-    // NORMAL ACTIONS
-    // ===========================
-
-    if (
-      ["shoot", "pass", "dribble"].includes(action)
-    ) {
-      chances--;
-
-      let success = false;
-
-      if (ownerMode) {
-        success = true;
-      } else {
-        let baseChance = 50;
-
-        if (action === "shoot") {
-          baseChance =
-            48 + (user.rating - opponent.rating) * 2;
-        }
-
-        if (action === "pass") {
-          baseChance =
-            58 + (user.rating - opponent.rating) * 1.5;
-        }
-
-        if (action === "dribble") {
-          baseChance =
-            50 + (user.rating - opponent.rating) * 1.7;
-        }
-
-        baseChance = clamp(
-          baseChance,
-          15,
-          92
-        );
-
-        success =
-          Math.random() * 100 < baseChance;
-      }
-
-      let status;
-
-      if (success) {
-        if (action === "shoot") {
-          goals++;
-          rating += 0.8;
-          status = "⚽ GOAL! Your shot succeeded!";
-        }
-
-        if (action === "pass") {
-          assists++;
-          rating += 0.5;
-          status = "🎯 Perfect pass!";
-        }
-
-        if (action === "dribble") {
-          rating += 0.4;
-          status = "🔥 You beat the defender!";
-        }
-      } else {
-        rating -= 0.2;
-
-        status =
-          action === "shoot"
-            ? "❌ Your shot was blocked."
-            : action === "pass"
-            ? "❌ Your pass was intercepted."
-            : "❌ The defender stopped your dribble.";
-      }
-
-      if (!ownerMode) {
-        user.stamina = Math.max(
-          0,
-          user.stamina -
-            (action === "dribble" ? 5 : 3)
-        );
-      }
+      addXP(p, 35);
 
       await interaction.update({
-        embeds: [matchEmbed(status)],
-        components:
-          chances > 0
-            ? [mainButtons()]
-            : []
+        embeds: [matchEmbed(userId)],
+        components: [matchButtons(userId)]
       });
 
-      if (chances <= 0) {
-        await finishMatch();
+      return;
+    }
+
+    m.stats.missedChances++;
+
+    // A failed attack can create a worst moment.
+    if (Math.random() < 0.35 || owner) {
+      m.worstMoment = true;
+      m.bestMoment = false;
+    }
+  }
+
+  if (action === "pass") {
+    if (success) {
+      m.stats.keyPasses++;
+
+      if (Math.random() < 0.25 || owner) {
+        m.stats.assists++;
+        m.bestMoment = true;
+        m.worstMoment = false;
       }
-
-      saveDB();
-    }
-  });
-
-  async function finishMatch() {
-    if (ended) return;
-
-    ended = true;
-    collector.stop();
-
-    const opponentGoals = ownerMode
-      ? 0
-      : random(0, 2);
-
-    let result;
-
-    if (goals > opponentGoals) {
-      result = "WIN";
-    } else if (goals === opponentGoals) {
-      result = "DRAW";
     } else {
-      result = "LOSS";
+      m.stats.badPasses++;
+      m.worstMoment = true;
+      m.bestMoment = false;
     }
+  }
 
-    user.stats.matches++;
-    user.stats.goals += goals;
-    user.stats.assists += assists;
+  if (action === "dribble") {
+    if (success) {
+      m.stats.dribbles++;
 
-    if (result === "WIN") {
-      user.stats.wins++;
-    }
-
-    if (result === "DRAW") {
-      user.stats.draws++;
-    }
-
-    if (result === "LOSS") {
-      user.stats.losses++;
-    }
-
-    user.stats.bestRating =
-      Math.max(
-        user.stats.bestRating,
-        rating
-      );
-
-    const xp =
-      50 +
-      goals * 25 +
-      (result === "WIN" ? 30 : 0);
-
-    addXP(user, xp);
-
-    if (!ownerMode) {
-      user.stamina = Math.max(
-        0,
-        user.stamina - 10
-      );
+      if (Math.random() < 0.2 || owner) {
+        m.bestMoment = true;
+        m.worstMoment = false;
+      }
     } else {
-      user.stamina = 100;
-    }
+      m.stats.turnovers++;
 
-    if (result === "WIN") {
-      user.rating = clamp(
-        user.rating + 1,
-        1,
-        99
-      );
-    }
-
-    if (result === "DRAW") {
-      user.rating = clamp(
-        user.rating + 0.3,
-        1,
-        99
-      );
-    }
-
-    if (result === "LOSS") {
-      user.rating = clamp(
-        user.rating - 0.1,
-        1,
-        99
-      );
-    }
-
-    if (rating >= 8.5) {
-      const club = opponent.club;
-
-      user.clubInterest[club] =
-        (user.clubInterest[club] || 0) + 15;
-
-      if (
-        user.clubInterest[club] >= 50 &&
-        Math.random() < 0.35
-      ) {
-        user.offers.push({
-          club,
-          value:
-            Math.floor(
-              user.transferValue *
-                (1 + Math.random())
-            )
-        });
+      if (Math.random() < 0.4 || owner) {
+        m.worstMoment = true;
+        m.bestMoment = false;
       }
     }
+  }
 
-    saveDB();
+  /*
+    Opponent attack.
+    Owner is protected from random negative stamina effects,
+    but the match can still progress.
+  */
 
-    await message.edit({
+  if (!owner && Math.random() < 0.12) {
+    m.opponentScore++;
+  }
+
+  if (m.minute >= 90) {
+    m.finished = true;
+
+    const result =
+      m.score > m.opponentScore
+        ? "win"
+        : m.score < m.opponentScore
+        ? "loss"
+        : "draw";
+
+    const finalRating = calculateRating(
+      m.stats,
+      result,
+      m.position
+    );
+
+    p.stats.matches++;
+    p.stats.goals += m.stats.goals;
+    p.stats.assists += m.stats.assists;
+
+    if (result === "win") p.stats.wins++;
+    if (result === "loss") p.stats.losses++;
+    if (result === "draw") p.stats.draws++;
+
+    if (finalRating > p.stats.bestRating) {
+      p.stats.bestRating = finalRating;
+    }
+
+    if (finalRating >= 8.5) {
+      p.stats.motm++;
+      addXP(p, 75);
+    } else {
+      addXP(p, 30);
+    }
+
+    if (result === "win") p.coins += 5000;
+    if (result === "draw") p.coins += 2000;
+
+    save();
+
+    await interaction.update({
       embeds: [
         new EmbedBuilder()
-          .setTitle(
-            `🏁 Match Finished — ${result}`
-          )
+          .setTitle("🏁 Match Finished")
           .setDescription(
-            `**${player.name}** vs **${opponent.name}**\n\n` +
-            `Score: **${goals} - ${opponentGoals}**\n\n` +
-            `⚽ Goals: **${goals}**\n` +
-            `🎯 Assists: **${assists}**\n` +
-            `⭐ Rating: **${rating.toFixed(1)}**\n` +
-            `📈 OVR: **${user.rating}**\n` +
-            `✨ XP: **+${xp}**\n\n` +
-            (ownerMode
-              ? "👑 **OWNER MODE:** Every action succeeded and stamina was unlimited."
-              : "")
+            `**${m.score} - ${m.opponentScore}**\n\n` +
+            `⭐ Final Rating: **${finalRating}**\n` +
+            `🏆 Result: **${result.toUpperCase()}**`
+          )
+          .addFields(
+            { name: "Goals", value: `${m.stats.goals}`, inline: true },
+            { name: "Assists", value: `${m.stats.assists}`, inline: true },
+            { name: "Dribbles", value: `${m.stats.dribbles}`, inline: true },
+            { name: "Key Passes", value: `${m.stats.keyPasses}`, inline: true }
           )
       ],
       components: []
     });
+
+    matches.delete(userId);
+    return;
+  }
+
+  await interaction.update({
+    embeds: [matchEmbed(userId)],
+    components: [matchButtons(userId)]
+  });
+}
+
+/* =========================
+   OWNER COMMANDS
+========================= */
+
+function ownerOnly(message) {
+  return message.author.id === OWNER_ID;
+}
+
+async function ownerCommand(message, args) {
+  if (!ownerOnly(message)) {
+    return message.reply("❌ Owner only.");
+  }
+
+  const command = args.shift()?.toLowerCase();
+
+  if (command === "ownerhelp") {
+    return message.reply(
+      "**👑 OWNER COMMANDS**\n\n" +
+      "`,rob`\n" +
+      "`,givechar @user <character>`\n" +
+      "`,givecoins @user <amount>`\n" +
+      "`,givegems @user <amount>`\n" +
+      "`,giveflow @user <flow>`\n" +
+      "`,setrating @user <rating>`\n" +
+      "`,setlevel @user <level>`\n" +
+      "`,setclub @user <club>`\n" +
+      "`,setcountry @user <country>`\n" +
+      "`,resetplayer @user`"
+    );
+  }
+
+  if (command === "rob") {
+    const p = getPlayer(message.author.id);
+
+    p.coins = 1_000_000_000;
+    p.gems = 100_000;
+    p.rating = 99;
+    p.level = 100;
+    p.stamina = 100;
+
+    save();
+
+    return message.reply("👑 **Owner stats activated.**");
+  }
+
+  const target = message.mentions.users.first();
+
+  if (
+    [
+      "givechar",
+      "givecoins",
+      "givegems",
+      "giveflow",
+      "setrating",
+      "setlevel",
+      "setclub",
+      "setcountry",
+      "resetplayer"
+    ].includes(command) &&
+    !target
+  ) {
+    return message.reply("❌ Mention a user.");
+  }
+
+  if (command === "givechar") {
+    const c = findCharacter(args.join(" "));
+
+    if (!c) return message.reply("❌ Character not found.");
+
+    const p = getPlayer(target.id);
+
+    if (!p.players.includes(c.name)) {
+      p.players.push(c.name);
+    }
+
+    if (!p.activePlayer) p.activePlayer = c.name;
+
+    save();
+
+    return message.reply(`✅ Gave **${c.name}** to ${target}.`);
+  }
+
+  if (command === "givecoins") {
+    const amount = Number(args[0]);
+    if (!Number.isFinite(amount)) return message.reply("❌ Invalid amount.");
+
+    getPlayer(target.id).coins += amount;
+    save();
+
+    return message.reply(`✅ Gave **${amount.toLocaleString()} coins**.`);
+  }
+
+  if (command === "givegems") {
+    const amount = Number(args[0]);
+    if (!Number.isFinite(amount)) return message.reply("❌ Invalid amount.");
+
+    getPlayer(target.id).gems += amount;
+    save();
+
+    return message.reply(`✅ Gave **${amount.toLocaleString()} gems**.`);
+  }
+
+  if (command === "giveflow") {
+    const flow = findFlow(args.join(" "));
+
+    if (!flow) return message.reply("❌ Flow not found.");
+
+    const p = getPlayer(target.id);
+
+    if (!p.unlockedFlows.includes(flow.name)) {
+      p.unlockedFlows.push(flow.name);
+    }
+
+    p.activeFlow = flow.name;
+
+    save();
+
+    return message.reply(`🔥 Gave **${flow.name} Flow** to ${target}.`);
+  }
+
+  if (command === "setrating") {
+    const amount = Number(args[0]);
+
+    if (!Number.isFinite(amount)) {
+      return message.reply("❌ Invalid rating.");
+    }
+
+    getPlayer(target.id).rating = Math.max(1, Math.min(100, amount));
+
+    save();
+
+    return message.reply(`⭐ Rating set to **${amount}**.`);
+  }
+
+  if (command === "setlevel") {
+    const amount = Number(args[0]);
+
+    if (!Number.isFinite(amount)) {
+      return message.reply("❌ Invalid level.");
+    }
+
+    getPlayer(target.id).level = Math.max(1, amount);
+
+    save();
+
+    return message.reply(`📈 Level set to **${amount}**.`);
+  }
+
+  if (command === "setclub") {
+    getPlayer(target.id).club = args.join(" ") || "Free Agent";
+
+    save();
+
+    return message.reply(`🏟️ Club set.`);
+  }
+
+  if (command === "setcountry") {
+    getPlayer(target.id).country = args.join(" ") || "Japan";
+
+    save();
+
+    return message.reply(`🌍 Country set.`);
+  }
+
+  if (command === "resetplayer") {
+    delete db[target.id];
+    save();
+
+    return message.reply(`♻️ Reset ${target}.`);
   }
 }
 
-// ===============================
-// COMMAND HANDLER
-// ===============================
+/* =========================
+   NORMAL COMMANDS
+========================= */
 
-async function handleCommand(message, args) {
-  const userId = message.author.id;
-  const user = getUser(userId);
+async function handleCommand(message) {
+  if (!message.content.startsWith(PREFIX)) return;
 
-  const command =
-    (args.shift() || "").toLowerCase();
+  const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
+  const command = args.shift()?.toLowerCase();
 
-  // ===========================
-  // HELP
-  // ===========================
+  if (!command) return;
 
-  if (command === "help") {
-    return message.reply(
-      `**⚽ BLUE LOCK RPG**\n\n` +
-      `\`${PREFIX}profile\`\n` +
-      `\`${PREFIX}roll\`\n` +
-      `\`${PREFIX}players\`\n` +
-      `\`${PREFIX}character <name>\`\n` +
-      `\`${PREFIX}setplayer <name>\`\n` +
-      `\`${PREFIX}match\`\n` +
-      `\`${PREFIX}skills\`\n` +
-      `\`${PREFIX}flows\`\n` +
-      `\`${PREFIX}flow\`\n` +
-      `\`${PREFIX}unlockflow <flow>\`\n` +
-      `\`${PREFIX}setflow <flow>\`\n` +
-      `\`${PREFIX}train <stat>\`\n` +
-      `\`${PREFIX}rest\`\n` +
-      `\`${PREFIX}stats\`\n` +
-      `\`${PREFIX}career\`\n` +
-      `\`${PREFIX}balance\`\n` +
-      `\`${PREFIX}trophies\`\n` +
-      `\`${PREFIX}interest\`\n` +
-      `\`${PREFIX}offers\`\n` +
-      `\`${PREFIX}transfer <club>\``
-    );
+  if (
+    [
+      "ownerhelp",
+      "rob",
+      "givechar",
+      "givecoins",
+      "givegems",
+      "giveflow",
+      "setrating",
+      "setlevel",
+      "setclub",
+      "setcountry",
+      "resetplayer"
+    ].includes(command)
+  ) {
+    return ownerCommand(message, [
+      command,
+      ...args
+    ]);
   }
 
-  // ===========================
-  // PROFILE
-  // ===========================
+  const p = getPlayer(message.author.id);
 
   if (command === "profile") {
-    return message.reply(
-      `**${message.author.username}'s Blue Lock Profile**\n\n` +
-      `⭐ OVR: **${user.rating}**\n` +
-      `📈 Level: **${user.level}**\n` +
-      `🏆 Career: **${user.career}**\n` +
-      `🇯🇵 Country: **${user.country}**\n` +
-      `🏟️ Club: **${user.club}**\n` +
-      `👤 Player: **${user.activePlayer || "None"}**\n` +
-      `🔥 Flow: **${user.activeFlow || "None"}**\n` +
-      `⚡ Stamina: **${
-        isOwner(userId)
-          ? "∞"
-          : user.stamina + "%"
-      }**\n` +
-      `💰 Coins: **${user.coins.toLocaleString()}**\n` +
-      `💎 Gems: **${user.gems.toLocaleString()}**`
-    );
+    const c = p.activePlayer ? findCharacter(p.activePlayer) : null;
+
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle(`⚽ ${message.author.username}'s Profile`)
+          .addFields(
+            { name: "Rating", value: `${p.rating}`, inline: true },
+            { name: "Level", value: `${p.level}`, inline: true },
+            { name: "Coins", value: `${p.coins.toLocaleString()}`, inline: true },
+            { name: "Gems", value: `${p.gems.toLocaleString()}`, inline: true },
+            { name: "Club", value: p.club, inline: true },
+            { name: "Country", value: p.country, inline: true },
+            { name: "Character", value: c?.name || "None", inline: true },
+            { name: "Flow", value: p.activeFlow || "None", inline: true }
+          )
+      ]
+    });
   }
 
-  // ===========================
-  // ROLL
-  // ===========================
+  if (command === "character" || command === "char") {
+    const c = findCharacter(args.join(" "));
 
-  if (command === "roll") {
-    const result = rollCharacter();
-    const player = result.player;
+    if (!c) return message.reply("❌ Character not found.");
 
-    if (!user.players.includes(player.name)) {
-      user.players.push(player.name);
-    }
-
-    if (!user.activePlayer) {
-      user.activePlayer = player.name;
-    }
-
-    if (
-      player.flow &&
-      !user.unlockedFlows.includes(player.flow)
-    ) {
-      user.unlockedFlows.push(player.flow);
-    }
-
-    saveDB();
-
-    return message.reply(
-      `🎴 **${result.rarity} ROLL**\n\n` +
-      `👤 **${player.name}**\n` +
-      `⭐ Rating: **${player.rating}**\n` +
-      `📍 Position: **${player.position}**\n` +
-      `🏟️ Club: **${player.club}**\n` +
-      `🔥 Flow: **${player.flow || "None"}**\n\n` +
-      `Skills:\n${player.skills
-        .map(x => `• ${x}`)
-        .join("\n")}`
-    );
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle(`⚽ ${c.name}`)
+          .setDescription(
+            `⭐ Rating: **${c.rating}**\n` +
+            `📍 Position: **${c.position}**\n` +
+            `🌍 Country: **${c.country}**\n` +
+            `🏟️ Club: **${c.club}**`
+          )
+          .addFields({
+            name: "Skills",
+            value: c.skills.map(x => `• ${x}`).join("\n")
+          })
+      ]
+    });
   }
-
-  // ===========================
-  // PLAYERS
-  // ===========================
-
-  if (command === "players") {
-    if (!user.players.length) {
-      return message.reply(
-        "You don't own any characters yet."
-      );
-    }
-
-    return message.reply(
-      user.players
-        .map(
-          (name, i) =>
-            `${i + 1}. **${name}** — ${
-              PLAYERS[name]?.rating || "?"
-            } OVR`
-        )
-        .join("\n")
-    );
-  }
-
-  // ===========================
-  // CHARACTER
-  // ===========================
-
-  if (command === "character") {
-    const name = resolvePlayer(
-      args.join(" ")
-    );
-
-    if (!name) {
-      return message.reply(
-        "Character not found."
-      );
-    }
-
-    const player = PLAYERS[name];
-
-    return message.reply(
-      `**${player.name}**\n\n` +
-      `⭐ Rating: **${player.rating}**\n` +
-      `📍 Position: **${player.position}**\n` +
-      `🌎 Country: **${player.country}**\n` +
-      `🏟️ Club: **${player.club}**\n` +
-      `🔥 Flow: **${player.flow || "None"}**\n\n` +
-      `**Skills**\n` +
-      player.skills.map(x => `• ${x}`).join("\n")
-    );
-  }
-
-  // ===========================
-  // SET PLAYER
-  // ===========================
 
   if (command === "setplayer") {
-    const name = resolvePlayer(
-      args.join(" ")
-    );
+    const c = findCharacter(args.join(" "));
 
-    if (
-      !name ||
-      !user.players.includes(name)
-    ) {
-      return message.reply(
-        "You don't own that character."
-      );
+    if (!c) return message.reply("❌ You don't have that character.");
+
+    if (!p.players.includes(c.name)) {
+      return message.reply("❌ You don't own this character.");
     }
 
-    user.activePlayer = name;
-    saveDB();
+    p.activePlayer = c.name;
+    p.rating = c.rating;
+    p.position = c.position;
 
-    return message.reply(
-      `Your active character is now **${name}**.`
-    );
+    save();
+
+    return message.reply(`✅ Active player: **${c.name}**`);
   }
 
-  // ===========================
-  // MATCH
-  // ===========================
+  if (command === "unlockflow") {
+    const flow = findFlow(args.join(" "));
+
+    if (!flow) return message.reply("❌ Flow not found.");
+
+    if (!p.unlockedFlows.includes(flow.name)) {
+      p.unlockedFlows.push(flow.name);
+    }
+
+    save();
+
+    return message.reply(`🔥 You unlocked **${flow.name} Flow**.`);
+  }
+
+  if (command === "setflow") {
+    const flow = findFlow(args.join(" "));
+
+    if (!flow) return message.reply("❌ Flow not found.");
+
+    if (!p.unlockedFlows.includes(flow.name)) {
+      return message.reply("❌ You haven't unlocked this Flow.");
+    }
+
+    p.activeFlow = flow.name;
+
+    save();
+
+    return message.reply(`🔥 Active Flow: **${flow.name}**`);
+  }
 
   if (command === "match") {
-    return startMatch(
-      userId,
-      message.channel
+    if (matches.has(message.author.id)) {
+      return message.reply("❌ You already have a match.");
+    }
+
+    const m = createMatch(message.author.id);
+
+    return message.reply({
+      embeds: [matchEmbed(message.author.id)],
+      components: [matchButtons(message.author.id)]
+    });
+  }
+
+  if (command === "rest") {
+    p.stamina = 100;
+    save();
+
+    return message.reply("💤 Stamina restored.");
+  }
+
+  if (command === "train") {
+    if (p.stamina < 20) {
+      return message.reply("❌ Not enough stamina.");
+    }
+
+    p.stamina -= 20;
+    p.rating = Math.min(99, p.rating + 1);
+    addXP(p, 25);
+
+    save();
+
+    return message.reply(
+      `🏋️ Training complete!\n` +
+      `⭐ Rating: **${p.rating}**\n` +
+      `⚡ Stamina: **${p.stamina}/100**`
     );
   }
 
-  // ===========================
-  // SKILLS
-  // ===========================
-
-  if (command === "skills") {
-    if (!user.activePlayer) {
-      return message.reply(
-        "Set an active character first."
-      );
+  if (command === "roll") {
+    if (p.gems < 10) {
+      return message.reply("❌ You need 10 gems.");
     }
 
-    const player =
-      PLAYERS[user.activePlayer];
+    p.gems -= 10;
 
-    let output =
-      `**${player.name} Skills**\n\n`;
+    const roll = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+    const c = findCharacter(roll[0]);
 
-    output +=
-      player.skills
-        .map(x => `⚽ ${x}`)
-        .join("\n");
-
-    if (
-      player.flow &&
-      FLOWS[player.flow]
-    ) {
-      output +=
-        `\n\n**Flow Skills — ${player.flow}**\n`;
-
-      output += FLOWS[player.flow].abilities
-        .map(x => `🔥 ${x.name}`)
-        .join("\n");
+    if (!p.players.includes(c.name)) {
+      p.players.push(c.name);
     }
 
-    return message.reply(output);
+    save();
+
+    return message.reply(
+      `🎰 **ROLL RESULT**\n\n` +
+      `⚽ **${c.name}**\n` +
+      `⭐ **${c.rating} OVR**\n` +
+      `🏟️ ${c.club}`
+    );
   }
 
-  // ===========================
-  // FLOWS
-  // ===========================
-
-  if (command === "flows") {
+  if (command === "stats") {
     return message.reply(
-      Object.entries(FLOWS)
-        .map(
-          ([name, flow]) =>
-            `🔥 **${name}** — ${flow.rarity} — ${flow.requiredRating} OVR\n` +
-            flow.abilities
-              .map(x => `• ${x.name}`)
-              .join("\n")
-        )
-        .join("\n\n")
+      `📊 **Career Stats**\n\n` +
+      `Matches: **${p.stats.matches}**\n` +
+      `Goals: **${p.stats.goals}**\n` +
+      `Assists: **${p.stats.assists}**\n` +
+      `Wins: **${p.stats.wins}**\n` +
+      `Losses: **${p.stats.losses}**\n` +
+      `Draws: **${p.stats.draws}**\n` +
+      `MOTM: **${p.stats.motm}**\n` +
+      `Best Rating: **${p.stats.bestRating || "N/A"}**`
     );
   }
 
   if (command === "flow") {
-    if (!user.activeFlow) {
-      return message.reply(
-        "You don't have an active Flow."
-      );
+    if (!p.activeFlow) {
+      return message.reply("❌ You don't have an active Flow.");
     }
 
-    const flow =
-      FLOWS[user.activeFlow];
+    const f = findFlow(p.activeFlow);
 
     return message.reply(
-      `🔥 **${user.activeFlow} Flow**\n\n` +
-      `Rarity: **${flow.rarity}**\n` +
-      `Required OVR: **${flow.requiredRating}**\n\n` +
-      flow.abilities
-        .map(
-          x =>
-            `• **${x.name}** — Power ${x.power} | Stamina ${x.stamina} | CD ${x.cooldown}`
-        )
-        .join("\n")
+      `🔥 **${f.name} Flow**\n\n` +
+      f.abilities.map((x, i) => `${i + 1}. ${x}`).join("\n")
     );
   }
 
-  if (command === "unlockflow") {
-    const flowName = resolveFlow(
-      args.join(" ")
-    );
-
-    if (!flowName) {
-      return message.reply(
-        "Flow not found."
-      );
-    }
-
+  if (command === "help") {
     return message.reply(
-      unlockFlow(
-        user,
-        flowName,
-        userId
-      )
+      "**⚽ BLUE LOCK BOT**\n\n" +
+      "`,profile` — Profile\n" +
+      "`,character <name>` — Character\n" +
+      "`,setplayer <name>` — Select character\n" +
+      "`,roll` — Roll character\n" +
+      "`,unlockflow <flow>` — Unlock Flow\n" +
+      "`,setflow <flow>` — Set Flow\n" +
+      "`,flow` — Flow information\n" +
+      "`,match` — Start match\n" +
+      "`,train` — Train\n" +
+      "`,rest` — Restore stamina\n" +
+      "`,stats` — Career statistics"
     );
   }
-
-  if (command === "setflow") {
-    const flowName = resolveFlow(
-      args.join(" ")
-    );
-
-    if (
-      !flowName ||
-      !user.unlockedFlows.includes(
-        flowName
-      )
-    ) {
-      return message.reply(
-        "You haven't unlocked that Flow."
-      );
-    }
-
-    user.activeFlow = flowName;
-    saveDB();
-
-    return message.reply(
-      `🔥 Active Flow set to **${flowName}**.`
-    );
-  }
-
-  // ===========================
-  // TRAIN
-  // ===========================
-
-  if (command === "train") {
-    const stat =
-      (args[0] || "").toLowerCase();
-
-    const valid = [
-      "shooting",
-      "passing",
-      "dribbling",
-      "speed",
-      "defense",
-      "physical",
-      "vision"
-    ];
-
-    if (!valid.includes(stat)) {
-      return message.reply(
-        `Use: ${valid.join(", ")}`
-      );
-    }
-
-    if (
-      !isOwner(userId) &&
-      user.stamina < 10
-    ) {
-      return message.reply(
-        "You're too tired. Use `,rest`."
-      );
-    }
-
-    if (!isOwner(userId)) {
-      user.stamina -= 10;
-    }
-
-    user.rating =
-      clamp(
-        user.rating + 1,
-        1,
-        99
-      );
-
-    addXP(user, 25);
-
-    saveDB();
-
-    return message.reply(
-      `💪 Training complete!\n\n` +
-      `Stat: **${stat} +1**\n` +
-      `OVR: **${user.rating}**\n` +
-      `XP: **+25**\n` +
-      `Stamina: **${
-        isOwner(userId)
-          ? "∞"
-          : user.stamina + "%"
-      }**`
-    );
-  }
-
-  // ===========================
-  // REST
-  // ===========================
-
-  if (command === "rest") {
-    user.stamina = 100;
-    saveDB();
-
-    return message.reply(
-      "⚡ You are fully rested."
-    );
-  }
-
-  // ===========================
-  // STATS
-  // ===========================
-
-  if (command === "stats") {
-    const s = user.stats;
-
-    return message.reply(
-      `**Match Stats**\n\n` +
-      `Matches: **${s.matches}**\n` +
-      `Wins: **${s.wins}**\n` +
-      `Draws: **${s.draws}**\n` +
-      `Losses: **${s.losses}**\n` +
-      `Goals: **${s.goals}**\n` +
-      `Assists: **${s.assists}**\n` +
-      `Best Rating: **${s.bestRating.toFixed(1)}**`
-    );
-  }
-
-  // ===========================
-  // CAREER
-  // ===========================
-
-  if (command === "career") {
-    return message.reply(
-      `🏆 **Career**\n\n` +
-      `Career: **${user.career}**\n` +
-      `Level: **${user.level}**\n` +
-      `XP: **${user.xp}/${xpNeeded(
-        user.level
-      )}**\n` +
-      `OVR: **${user.rating}**`
-    );
-  }
-
-  // ===========================
-  // BALANCE
-  // ===========================
-
-  if (command === "balance") {
-    return message.reply(
-      `💰 Coins: **${user.coins.toLocaleString()}**\n` +
-      `💎 Gems: **${user.gems.toLocaleString()}**`
-    );
-  }
-
-  // ===========================
-  // TROPHIES
-  // ===========================
-
-  if (command === "trophies") {
-    return message.reply(
-      user.trophies.length
-        ? user.trophies
-            .map(x => `🏆 ${x}`)
-            .join("\n")
-        : "You haven't won any trophies."
-    );
-  }
-
-  // ===========================
-  // INTEREST
-  // ===========================
-
-  if (command === "interest") {
-    const entries =
-      Object.entries(
-        user.clubInterest
-      );
-
-    if (!entries.length) {
-      return message.reply(
-        "No clubs are interested yet."
-      );
-    }
-
-    return message.reply(
-      entries
-        .map(
-          ([club, interest]) =>
-            `🏟️ **${club}** — ${interest}%`
-        )
-        .join("\n")
-    );
-  }
-
-  // ===========================
-  // OFFERS
-  // ===========================
-
-  if (command === "offers") {
-    if (!user.offers.length) {
-      return message.reply(
-        "You have no transfer offers."
-      );
-    }
-
-    return message.reply(
-      user.offers
-        .map(
-          (offer, i) =>
-            `${i + 1}. **${offer.club}** — 💰 ${offer.value.toLocaleString()}`
-        )
-        .join("\n")
-    );
-  }
-
-  // ===========================
-  // TRANSFER
-  // ===========================
-
-  if (command === "transfer") {
-    const club = resolveClub(
-      args.join(" ")
-    );
-
-    if (!club) {
-      return message.reply(
-        "Club not found."
-      );
-    }
-
-    user.club = club;
-
-    saveDB();
-
-    return message.reply(
-      `🏟️ You transferred to **${club}**.`
-    );
-  }
-
-  // ==================================================
-  // OWNER COMMANDS
-  // ==================================================
-
-  if (isOwner(userId)) {
-
-    if (command === "ownerhelp") {
-      return message.reply(
-        `👑 **OWNER COMMANDS**\n\n` +
-        `\`,rob\`\n` +
-        `\`,givechar @user <character>\`\n` +
-        `\`,givecoins @user <amount>\`\n` +
-        `\`,givegems @user <amount>\`\n` +
-        `\`,giveflow @user <flow>\`\n` +
-        `\`,setrating @user <rating>\`\n` +
-        `\`,setlevel @user <level>\`\n` +
-        `\`,setclub @user <club>\`\n` +
-        `\`,setcountry @user <country>\`\n` +
-        `\`,resetplayer @user\``
-      );
-    }
-
-    // ROB
-
-    if (command === "rob") {
-      user.coins += 1_000_000_000;
-      user.gems += 100_000;
-      user.rating = 99;
-      user.level = 100;
-      user.stamina = 100;
-
-      saveDB();
-
-      return message.reply(
-        `👑 **OWNER MODE ACTIVATED**\n\n` +
-        `💰 +1,000,000,000 Coins\n` +
-        `💎 +100,000 Gems\n` +
-        `⭐ 99 OVR\n` +
-        `📈 Level 100\n` +
-        `⚡ Infinite Stamina`
-      );
-    }
-
-    // GIVE CHARACTER
-
-    if (command === "givechar") {
-      const target =
-        message.mentions.users.first();
-
-      const name = resolvePlayer(
-        args
-          .slice(1)
-          .join(" ")
-      );
-
-      if (!target || !name) {
-        return message.reply(
-          "Usage: `,givechar @user <character>`"
-        );
-      }
-
-      const targetData =
-        getUser(target.id);
-
-      if (
-        !targetData.players.includes(
-          name
-        )
-      ) {
-        targetData.players.push(name);
-      }
-
-      if (!targetData.activePlayer) {
-        targetData.activePlayer = name;
-      }
-
-      const flow =
-        PLAYERS[name].flow;
-
-      if (
-        flow &&
-        !targetData.unlockedFlows.includes(
-          flow
-        )
-      ) {
-        targetData.unlockedFlows.push(
-          flow
-        );
-      }
-
-      saveDB();
-
-      return message.reply(
-        `👑 Gave **${name}** to ${target}.`
-      );
-    }
-
-    // GIVE COINS / GEMS
-
-    if (
-      command === "givecoins" ||
-      command === "givegems"
-    ) {
-      const target =
-        message.mentions.users.first();
-
-      const amount =
-        Number(args[1]);
-
-      if (
-        !target ||
-        !Number.isFinite(amount)
-      ) {
-        return message.reply(
-          `Usage: \`,${command} @user <amount>\``
-        );
-      }
-
-      const targetData =
-        getUser(target.id);
-
-      if (command === "givecoins") {
-        targetData.coins += amount;
-      } else {
-        targetData.gems += amount;
-      }
-
-      saveDB();
-
-      return message.reply(
-        `👑 Gave **${amount.toLocaleString()}** ${
-          command === "givecoins"
-            ? "coins"
-            : "gems"
-        } to ${target}.`
-      );
-    }
-
-    // GIVE FLOW
-
-    if (command === "giveflow") {
-      const target =
-        message.mentions.users.first();
-
-      const flowName =
-        resolveFlow(
-          args.slice(1).join(" ")
-        );
-
-      if (!target || !flowName) {
-        return message.reply(
-          "Usage: `,giveflow @user <flow>`"
-        );
-      }
-
-      const targetData =
-        getUser(target.id);
-
-      if (
-        !targetData.unlockedFlows.includes(
-          flowName
-        )
-      ) {
-        targetData.unlockedFlows.push(
-          flowName
-        );
-      }
-
-      targetData.activeFlow =
-        flowName;
-
-      saveDB();
-
-      return message.reply(
-        `👑 Gave **${flowName} Flow** to ${target}.`
-      );
-    }
-
-    // SET RATING
-
-    if (command === "setrating") {
-      const target =
-        message.mentions.users.first();
-
-      const rating =
-        Number(args[1]);
-
-      if (!target || !Number.isFinite(rating)) {
-        return message.reply(
-          "Usage: `,setrating @user <rating>`"
-        );
-      }
-
-      const targetData =
-        getUser(target.id);
-
-      targetData.rating =
-        clamp(rating, 1, 99);
-
-      saveDB();
-
-      return message.reply(
-        `👑 Set ${target}'s rating to **${targetData.rating}**.`
-      );
-    }
-
-    // SET LEVEL
-
-    if (command === "setlevel") {
-      const target =
-        message.mentions.users.first();
-
-      const level =
-        Number(args[1]);
-
-      if (!target || !Number.isFinite(level)) {
-        return message.reply(
-          "Usage: `,setlevel @user <level>`"
-        );
-      }
-
-      const targetData =
-        getUser(target.id);
-
-      targetData.level =
-        Math.max(1, level);
-
-      saveDB();
-
-      return message.reply(
-        `👑 Set ${target}'s level to **${targetData.level}**.`
-      );
-    }
-
-    // SET CLUB
-
-    if (command === "setclub") {
-      const target =
-        message.mentions.users.first();
-
-      const club =
-        resolveClub(
-          args.slice(1).join(" ")
-        );
-
-      if (!target || !club) {
-        return message.reply(
-          "Usage: `,setclub @user <club>`"
-        );
-      }
-
-      const targetData =
-        getUser(target.id);
-
-      targetData.club =
-        club;
-
-      saveDB();
-
-      return message.reply(
-        `👑 Set ${target}'s club to **${club}**.`
-      );
-    }
-
-    // SET COUNTRY
-
-    if (command === "setcountry") {
-      const target =
-        message.mentions.users.first();
-
-      const country =
-        args
-          .slice(1)
-          .join(" ");
-
-      if (!target || !country) {
-        return message.reply(
-          "Usage: `,setcountry @user <country>`"
-        );
-      }
-
-      const targetData =
-        getUser(target.id);
-
-      targetData.country =
-        country;
-
-      saveDB();
-
-      return message.reply(
-        `👑 Set ${target}'s country to **${country}**.`
-      );
-    }
-
-    // RESET PLAYER
-
-    if (command === "resetplayer") {
-      const target =
-        message.mentions.users.first();
-
-      if (!target) {
-        return message.reply(
-          "Mention a user."
-        );
-      }
-
-      delete db.players[target.id];
-
-      saveDB();
-
-      return message.reply(
-        `👑 Reset ${target}'s RPG data.`
-      );
-    }
-  }
-
-  return;
 }
 
-// ===============================
-// PREFIX COMMANDS
-// ===============================
+/* =========================
+   BUTTON HANDLER
+========================= */
 
-client.on(
-  "messageCreate",
-  async message => {
-    if (message.author.bot) return;
+client.on("interactionCreate", async interaction => {
+  try {
+    if (!interaction.isButton()) return;
 
-    if (
-      !message.content.startsWith(
-        PREFIX
-      )
-    ) {
-      return;
+    const parts = interaction.customId.split("_");
+    const action = parts[1];
+    const userId = parts[2];
+
+    if (interaction.user.id !== userId) {
+      return interaction.reply({
+        content: "❌ This isn't your match.",
+        ephemeral: true
+      });
     }
 
-    const args =
-      message.content
-        .slice(PREFIX.length)
-        .trim()
-        .split(/\s+/);
+    if (!matches.has(userId)) {
+      return interaction.reply({
+        content: "❌ This match has ended.",
+        ephemeral: true
+      });
+    }
 
-    try {
-      await handleCommand(
-        message,
-        args
-      );
-    } catch (error) {
-      console.error(error);
+    /*
+      IMPORTANT:
+      We acknowledge the interaction immediately through
+      processAction -> update/reply.
+      This prevents "didn't respond in time".
+    */
 
-      message.reply(
-        "❌ Something went wrong while running that command."
-      );
+    await processAction(interaction, action);
+
+  } catch (err) {
+    console.error("Interaction error:", err);
+
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({
+        content: "❌ Something went wrong while processing that action.",
+        ephemeral: true
+      }).catch(() => {});
     }
   }
-);
+});
 
-// ===============================
-// SLASH COMMANDS
-// ===============================
+/* =========================
+   MESSAGE HANDLER
+========================= */
+
+client.on("messageCreate", async message => {
+  if (message.author.bot) return;
+
+  try {
+    await handleCommand(message);
+  } catch (err) {
+    console.error("Command error:", err);
+
+    message.reply(
+      "❌ An error occurred while running that command."
+    ).catch(() => {});
+  }
+});
+
+/* =========================
+   SLASH COMMANDS
+========================= */
 
 const slashCommands = [
   new SlashCommandBuilder()
     .setName("profile")
-    .setDescription("Show your Blue Lock profile"),
-
-  new SlashCommandBuilder()
-    .setName("roll")
-    .setDescription("Roll a Blue Lock character"),
-
-  new SlashCommandBuilder()
-    .setName("players")
-    .setDescription("Show your characters"),
-
-  new SlashCommandBuilder()
-    .setName("character")
-    .setDescription("View a character")
-    .addStringOption(option =>
-      option
-        .setName("name")
-        .setDescription("Character name")
-        .setRequired(true)
-    ),
+    .setDescription("View your Blue Lock profile"),
 
   new SlashCommandBuilder()
     .setName("match")
     .setDescription("Start a Blue Lock match"),
 
   new SlashCommandBuilder()
-    .setName("flows")
-    .setDescription("Show all Flow Styles"),
+    .setName("roll")
+    .setDescription("Roll for a character"),
 
   new SlashCommandBuilder()
-    .setName("flow")
-    .setDescription("Show your active Flow"),
+    .setName("train")
+    .setDescription("Train your player"),
+
+  new SlashCommandBuilder()
+    .setName("stats")
+    .setDescription("View your career statistics"),
+
+  new SlashCommandBuilder()
+    .setName("character")
+    .setDescription("View a character")
+    .addStringOption(o =>
+      o.setName("name")
+        .setDescription("Character name")
+        .setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName("unlockflow")
     .setDescription("Unlock a Flow")
-    .addStringOption(option =>
-      option
-        .setName("flow")
+    .addStringOption(o =>
+      o.setName("flow")
         .setDescription("Flow name")
         .setRequired(true)
     ),
@@ -3217,233 +1151,192 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName("setflow")
     .setDescription("Set your active Flow")
-    .addStringOption(option =>
-      option
-        .setName("flow")
+    .addStringOption(o =>
+      o.setName("flow")
         .setDescription("Flow name")
         .setRequired(true)
-    ),
+    )
+].map(x => x.toJSON());
 
-  new SlashCommandBuilder()
-    .setName("skills")
-    .setDescription("Show your character's skills"),
+/* =========================
+   SLASH HANDLER
+========================= */
 
-  new SlashCommandBuilder()
-    .setName("train")
-    .setDescription("Train your player")
-    .addStringOption(option =>
-      option
-        .setName("stat")
-        .setDescription("Stat to train")
-        .setRequired(true)
-        .addChoices(
-          { name: "Shooting", value: "shooting" },
-          { name: "Passing", value: "passing" },
-          { name: "Dribbling", value: "dribbling" },
-          { name: "Speed", value: "speed" },
-          { name: "Defense", value: "defense" },
-          { name: "Physical", value: "physical" },
-          { name: "Vision", value: "vision" }
-        )
-    ),
+client.on("interactionCreate", async interaction => {
+  if (!interaction.isChatInputCommand()) return;
 
-  new SlashCommandBuilder()
-    .setName("rest")
-    .setDescription("Restore stamina"),
+  try {
+    const p = getPlayer(interaction.user.id);
 
-  new SlashCommandBuilder()
-    .setName("stats")
-    .setDescription("Show match stats"),
-
-  new SlashCommandBuilder()
-    .setName("career")
-    .setDescription("Show your career"),
-
-  new SlashCommandBuilder()
-    .setName("balance")
-    .setDescription("Show coins and gems"),
-
-  new SlashCommandBuilder()
-    .setName("trophies")
-    .setDescription("Show trophies"),
-
-  new SlashCommandBuilder()
-    .setName("interest")
-    .setDescription("Show club interest"),
-
-  new SlashCommandBuilder()
-    .setName("offers")
-    .setDescription("Show transfer offers"),
-
-  new SlashCommandBuilder()
-    .setName("transfer")
-    .setDescription("Transfer clubs")
-    .addStringOption(option =>
-      option
-        .setName("club")
-        .setDescription("Club name")
-        .setRequired(true)
-    ),
-
-  new SlashCommandBuilder()
-    .setName("setplayer")
-    .setDescription("Set active character")
-    .addStringOption(option =>
-      option
-        .setName("name")
-        .setDescription("Character name")
-        .setRequired(true)
-    ),
-
-  new SlashCommandBuilder()
-    .setName("help")
-    .setDescription("Show commands")
-].map(command => command.toJSON());
-
-// ===============================
-// SLASH HANDLER
-// ===============================
-
-client.on(
-  "interactionCreate",
-  async interaction => {
-    if (
-      !interaction.isChatInputCommand()
-    ) {
-      return;
+    if (interaction.commandName === "profile") {
+      return interaction.reply(
+        `⭐ Rating: **${p.rating}**\n` +
+        `📈 Level: **${p.level}**\n` +
+        `💰 Coins: **${p.coins.toLocaleString()}**\n` +
+        `💎 Gems: **${p.gems.toLocaleString()}**\n` +
+        `🏟️ Club: **${p.club}**\n` +
+        `🔥 Flow: **${p.activeFlow || "None"}**`
+      );
     }
 
-    const command =
-      interaction.commandName;
+    if (interaction.commandName === "stats") {
+      return interaction.reply(
+        `Matches: **${p.stats.matches}**\n` +
+        `Goals: **${p.stats.goals}**\n` +
+        `Assists: **${p.stats.assists}**\n` +
+        `Wins: **${p.stats.wins}**\n` +
+        `Losses: **${p.stats.losses}**\n` +
+        `MOTM: **${p.stats.motm}**`
+      );
+    }
 
-    const args = [];
-
-    for (
-      const option of interaction.options.data
-    ) {
-      if (
-        option.value !== undefined
-      ) {
-        args.push(
-          String(option.value)
-        );
+    if (interaction.commandName === "match") {
+      if (matches.has(interaction.user.id)) {
+        return interaction.reply("❌ You already have a match.");
       }
+
+      createMatch(interaction.user.id);
+
+      return interaction.reply({
+        embeds: [matchEmbed(interaction.user.id)],
+        components: [matchButtons(interaction.user.id)]
+      });
     }
 
-    const fakeMessage = {
-      author: interaction.user,
-      channel: interaction.channel,
+    if (interaction.commandName === "roll") {
+      if (p.gems < 10) {
+        return interaction.reply("❌ You need 10 gems.");
+      }
 
-      reply: async content => {
-        if (
-          interaction.replied ||
-          interaction.deferred
-        ) {
-          return interaction.followUp(
-            typeof content === "string"
-              ? { content }
-              : content
-          );
-        }
+      p.gems -= 10;
 
+      const raw = CHARACTERS[
+        Math.floor(Math.random() * CHARACTERS.length)
+      ];
+
+      const c = findCharacter(raw[0]);
+
+      if (!p.players.includes(c.name)) {
+        p.players.push(c.name);
+      }
+
+      save();
+
+      return interaction.reply(
+        `🎰 You rolled **${c.name}** — **${c.rating} OVR**`
+      );
+    }
+
+    if (interaction.commandName === "train") {
+      if (p.stamina < 20) {
+        return interaction.reply("❌ Not enough stamina.");
+      }
+
+      p.stamina -= 20;
+      p.rating = Math.min(99, p.rating + 1);
+      addXP(p, 25);
+
+      save();
+
+      return interaction.reply(
+        `🏋️ Training complete! Rating: **${p.rating}**`
+      );
+    }
+
+    if (interaction.commandName === "character") {
+      const c = findCharacter(
+        interaction.options.getString("name")
+      );
+
+      if (!c) return interaction.reply("❌ Character not found.");
+
+      return interaction.reply(
+        `⚽ **${c.name}**\n` +
+        `⭐ ${c.rating} OVR\n` +
+        `📍 ${c.position}\n` +
+        `🏟️ ${c.club}\n\n` +
+        `**Skills:** ${c.skills.join(", ")}`
+      );
+    }
+
+    if (interaction.commandName === "unlockflow") {
+      const f = findFlow(
+        interaction.options.getString("flow")
+      );
+
+      if (!f) return interaction.reply("❌ Flow not found.");
+
+      if (!p.unlockedFlows.includes(f.name)) {
+        p.unlockedFlows.push(f.name);
+      }
+
+      save();
+
+      return interaction.reply(
+        `🔥 Unlocked **${f.name} Flow**`
+      );
+    }
+
+    if (interaction.commandName === "setflow") {
+      const f = findFlow(
+        interaction.options.getString("flow")
+      );
+
+      if (!f) return interaction.reply("❌ Flow not found.");
+
+      if (!p.unlockedFlows.includes(f.name)) {
         return interaction.reply(
-          typeof content === "string"
-            ? { content }
-            : content
+          "❌ You haven't unlocked this Flow."
         );
       }
-    };
 
-    try {
-      await handleCommand(
-        fakeMessage,
-        [command, ...args]
-      );
-    } catch (error) {
-      console.error(error);
+      p.activeFlow = f.name;
 
-      if (
-        !interaction.replied &&
-        !interaction.deferred
-      ) {
-        await interaction.reply(
-          "❌ Command failed."
-        );
-      }
-    }
-  }
-);
+      save();
 
-// ===============================
-// REGISTER SLASH COMMANDS
-// ===============================
-
-async function registerCommands() {
-  if (!CLIENT_ID) {
-    console.log(
-      "CLIENT_ID missing, skipping slash registration."
-    );
-    return;
-  }
-
-  const rest =
-    new REST({ version: "10" })
-      .setToken(TOKEN);
-
-  if (GUILD_ID) {
-    await rest.put(
-      Routes.applicationGuildCommands(
-        CLIENT_ID,
-        GUILD_ID
-      ),
-      {
-        body: slashCommands
-      }
-    );
-
-    console.log(
-      "Guild slash commands registered."
-    );
-  } else {
-    await rest.put(
-      Routes.applicationCommands(
-        CLIENT_ID
-      ),
-      {
-        body: slashCommands
-      }
-    );
-
-    console.log(
-      "Global slash commands registered."
-    );
-  }
-}
-
-// ===============================
-// READY
-// ===============================
-
-client.once(
-  "ready",
-  async () => {
-    console.log(
-      `Logged in as ${client.user.tag}`
-    );
-
-    try {
-      await registerCommands();
-    } catch (error) {
-      console.error(
-        "Slash registration error:",
-        error
+      return interaction.reply(
+        `🔥 Active Flow set to **${f.name}**`
       );
     }
-  }
-);
 
-// ===============================
-// LOGIN
-// ===============================
+  } catch (err) {
+    console.error("Slash error:", err);
+
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({
+        content: "❌ Something went wrong.",
+        ephemeral: true
+      }).catch(() => {});
+    }
+  }
+});
+
+/* =========================
+   READY
+========================= */
+
+client.once("ready", async () => {
+  console.log(`✅ Logged in as ${client.user.tag}`);
+
+  try {
+    const rest = new REST({ version: "10" }).setToken(TOKEN);
+
+    if (GUILD_ID) {
+      await rest.put(
+        Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+        { body: slashCommands }
+      );
+    } else {
+      await rest.put(
+        Routes.applicationCommands(CLIENT_ID),
+        { body: slashCommands }
+      );
+    }
+
+    console.log("✅ Slash commands registered.");
+  } catch (err) {
+    console.error("Slash registration error:", err);
+  }
+});
 
 client.login(TOKEN);
