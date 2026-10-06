@@ -272,67 +272,32 @@ function addXP(p, amount) {
 }
 
 /* =========================
-   REALISTIC MATCH RATING
-========================= */
-
-function calculateRating(stats, result, position = "ST") {
-  let rating = 6.2;
-
-  rating += stats.goals * 0.9;
-  rating += stats.assists * 0.6;
-  rating += stats.shotsOnTarget * 0.12;
-  rating += stats.keyPasses * 0.12;
-  rating += stats.dribbles * 0.08;
-  rating += stats.tackles * (position === "CB" ? 0.12 : 0.05);
-  rating += stats.interceptions * (position === "CB" ? 0.1 : 0.04);
-
-  rating -= stats.missedChances * 0.18;
-  rating -= stats.badPasses * 0.08;
-  rating -= stats.turnovers * 0.05;
-
-  if (result === "win") rating += 0.3;
-  if (result === "loss") rating -= 0.3;
-
-  /*
-    Rough real-football scale:
-    6.0 = poor/average
-    6.5 = okay
-    7.0 = solid
-    7.5 = good
-    8.0 = very good
-    9.0 = outstanding
-    10.0 = extremely rare
-  */
-
-  return Math.max(4.5, Math.min(10, Number(rating.toFixed(1))));
-}
-
-/* =========================
-   MATCH SYSTEM
+   MATCH SYSTEM — UPDATED
 ========================= */
 
 const matches = new Map();
 
 function createMatch(userId) {
   const p = getPlayer(userId);
-
-  const player = p.activePlayer
+  const character = p.activePlayer
     ? findCharacter(p.activePlayer)
     : null;
 
-  const rating = player ? player.rating : p.rating;
-
   const match = {
     userId,
-    rating,
-    position: player?.position || p.position,
+    minute: 1,
     score: 0,
     opponentScore: 0,
-    minute: 1,
-    finished: false,
+
+    // Whether the player currently has a chance
+    hasChance: userId === OWNER_ID,
+
     bestMoment: false,
     worstMoment: false,
+    flowActive: false,
     flowUsed: false,
+    finished: false,
+
     stats: {
       goals: 0,
       assists: 0,
@@ -344,84 +309,239 @@ function createMatch(userId) {
       missedChances: 0,
       badPasses: 0,
       turnovers: 0
-    }
+    },
+
+    position: character?.position || p.position,
+    rating: character?.rating || p.rating
   };
 
   matches.set(userId, match);
   return match;
 }
 
+
+/* =========================
+   REALISTIC RATING
+========================= */
+
+function calculateRating(stats, result, position) {
+  let rating = 6.2;
+
+  rating += stats.goals * 0.9;
+  rating += stats.assists * 0.65;
+  rating += stats.shotsOnTarget * 0.12;
+  rating += stats.keyPasses * 0.1;
+  rating += stats.dribbles * 0.07;
+
+  if (position === "CB" || position === "GK") {
+    rating += stats.tackles * 0.1;
+    rating += stats.interceptions * 0.12;
+  }
+
+  rating -= stats.missedChances * 0.15;
+  rating -= stats.badPasses * 0.07;
+  rating -= stats.turnovers * 0.05;
+
+  if (result === "win") rating += 0.3;
+  if (result === "loss") rating -= 0.3;
+
+  return Math.max(
+    4.5,
+    Math.min(10, Number(rating.toFixed(1)))
+  );
+}
+
+
+/* =========================
+   MATCH EMBED
+========================= */
+
 function matchEmbed(userId) {
   const m = matches.get(userId);
   const p = getPlayer(userId);
+
+  const result =
+    m.score > m.opponentScore
+      ? "win"
+      : m.score < m.opponentScore
+      ? "loss"
+      : "draw";
+
+  const rating = calculateRating(
+    m.stats,
+    result,
+    m.position
+  );
+
+  let chanceText;
+
+  if (userId === OWNER_ID) {
+    chanceText = "🔥 **CHANCE AVAILABLE**";
+  } else if (m.hasChance) {
+    chanceText = "⚡ **CHANCE AVAILABLE**";
+  } else {
+    chanceText = "⏳ **No chance right now**";
+  }
 
   const flowAllowed =
     userId === OWNER_ID ||
     m.bestMoment ||
     m.worstMoment;
 
-  const flowText = p.activeFlow
-    ? `${p.activeFlow}${flowAllowed ? " 🟢" : " 🔒"}`
-    : "None";
-
   return new EmbedBuilder()
-    .setTitle("⚽ Blue Lock Match")
+    .setTitle("⚽ BLUE LOCK MATCH")
     .setDescription(
-      `**${m.score} - ${m.opponentScore}**\n\n` +
-      `⏱️ Minute: **${m.minute}'**\n` +
-      `⭐ Match Rating: **${calculateRating(m.stats, m.score > m.opponentScore ? "win" : m.score < m.opponentScore ? "loss" : "draw", m.position)}**\n` +
-      `🔥 Flow: **${flowText}**`
+      `### ${m.score} - ${m.opponentScore}\n\n` +
+      `⏱️ **${m.minute}'**\n` +
+      `⭐ Match Rating: **${rating}**\n\n` +
+      `${chanceText}`
     )
     .addFields(
-      { name: "Goals", value: `${m.stats.goals}`, inline: true },
-      { name: "Assists", value: `${m.stats.assists}`, inline: true },
-      { name: "Dribbles", value: `${m.stats.dribbles}`, inline: true },
-      { name: "Key Passes", value: `${m.stats.keyPasses}`, inline: true },
-      { name: "Best Moment", value: m.bestMoment ? "🔥 ACTIVE" : "—", inline: true },
-      { name: "Worst Moment", value: m.worstMoment ? "💀 ACTIVE" : "—", inline: true }
+      {
+        name: "Goals",
+        value: `${m.stats.goals}`,
+        inline: true
+      },
+      {
+        name: "Assists",
+        value: `${m.stats.assists}`,
+        inline: true
+      },
+      {
+        name: "Dribbles",
+        value: `${m.stats.dribbles}`,
+        inline: true
+      },
+      {
+        name: "Key Passes",
+        value: `${m.stats.keyPasses}`,
+        inline: true
+      },
+      {
+        name: "Best Moment",
+        value: m.bestMoment ? "🔥 ACTIVE" : "—",
+        inline: true
+      },
+      {
+        name: "Worst Moment",
+        value: m.worstMoment ? "💀 ACTIVE" : "—",
+        inline: true
+      },
+      {
+        name: "Flow",
+        value: p.activeFlow
+          ? `${p.activeFlow}${flowAllowed ? " 🟢" : " 🔒"}`
+          : "None",
+        inline: true
+      }
     );
 }
+
+
+/* =========================
+   MATCH BUTTONS
+========================= */
 
 function matchButtons(userId) {
   const m = matches.get(userId);
   const p = getPlayer(userId);
 
+  const owner = userId === OWNER_ID;
+
   const flowAllowed =
-    userId === OWNER_ID ||
+    owner ||
     m.bestMoment ||
     m.worstMoment;
 
+  const chance = owner || m.hasChance;
+
   return [
     new ActionRowBuilder().addComponents(
+
       new ButtonBuilder()
         .setCustomId(`match_shoot_${userId}`)
         .setLabel("Shoot")
-        .setStyle(ButtonStyle.Danger),
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(!chance),
 
       new ButtonBuilder()
         .setCustomId(`match_pass_${userId}`)
         .setLabel("Pass")
-        .setStyle(ButtonStyle.Primary),
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(!chance),
 
       new ButtonBuilder()
         .setCustomId(`match_dribble_${userId}`)
         .setLabel("Dribble")
-        .setStyle(ButtonStyle.Success),
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(!chance),
 
       new ButtonBuilder()
         .setCustomId(`match_flow_${userId}`)
         .setLabel("Flow")
         .setStyle(ButtonStyle.Secondary)
-        .setDisabled(!flowAllowed || !p.activeFlow)
+        .setDisabled(
+          !chance ||
+          !p.activeFlow ||
+          !flowAllowed
+        )
     )
   ];
 }
 
+
 /* =========================
-   MATCH ACTIONS
+   ADVANCE MATCH TIME
+========================= */
+
+function advanceMatch(m) {
+
+  /*
+    Instead of giving the player an action every
+    minute, the match jumps forward randomly.
+  */
+
+  const jump =
+    Math.floor(Math.random() * 9) + 2;
+
+  m.minute += jump;
+
+  if (m.minute > 90) {
+    m.minute = 90;
+  }
+
+  /*
+    Owner always has a chance.
+  */
+
+  if (m.userId === OWNER_ID) {
+    m.hasChance = true;
+    return;
+  }
+
+  /*
+    Normal players don't always get a chance.
+    Roughly 35% chance when the next event happens.
+  */
+
+  m.hasChance = Math.random() < 0.35;
+
+  /*
+    Random opponent goal.
+  */
+
+  if (Math.random() < 0.12) {
+    m.opponentScore++;
+  }
+}
+
+
+/* =========================
+   MATCH ACTION
 ========================= */
 
 async function processAction(interaction, action) {
+
   const userId = interaction.user.id;
   const m = matches.get(userId);
 
@@ -434,21 +554,41 @@ async function processAction(interaction, action) {
 
   const p = getPlayer(userId);
 
-  /*
-    OWNER:
-    Every action succeeds.
-    Unlimited stamina.
-    Flow anytime.
-  */
-
   const owner = userId === OWNER_ID;
 
-  if (action === "flow") {
-    const allowed = owner || m.bestMoment || m.worstMoment;
+  /*
+    OWNER IS IMMUNE:
+    - Always has a chance
+    - Actions always succeed
+    - No negative events
+    - Flow anytime
+  */
 
-    if (!allowed) {
+  if (!owner && !m.hasChance) {
+    return interaction.reply({
+      content:
+        `⏳ You don't have a chance at **${m.minute}'**.\n` +
+        `Wait for another match event.`,
+      ephemeral: true
+    });
+  }
+
+
+  /* =========================
+     FLOW
+  ========================= */
+
+  if (action === "flow") {
+
+    const flowAllowed =
+      owner ||
+      m.bestMoment ||
+      m.worstMoment;
+
+    if (!flowAllowed) {
       return interaction.reply({
-        content: "🔒 Flow can only be activated during your Best Moment or Worst Moment.",
+        content:
+          "🔒 Flow can only activate during your **Best Moment** or **Worst Moment**.",
         ephemeral: true
       });
     }
@@ -462,110 +602,164 @@ async function processAction(interaction, action) {
 
     if (!owner && m.flowUsed) {
       return interaction.reply({
-        content: "⏳ You've already used Flow in this match.",
+        content: "⏳ You've already activated Flow this match.",
         ephemeral: true
       });
     }
 
     m.flowUsed = true;
+    m.flowActive = true;
 
-    if (!owner) {
+    if (owner) {
+      p.flowCooldown = 0;
+    } else {
       p.flowCooldown = 180;
     }
 
-    return interaction.reply({
-      content:
-        `🔥 **${p.activeFlow} FLOW ACTIVATED!**\n` +
-        `You can now use your Flow abilities.`
+    return interaction.update({
+      embeds: [
+        matchEmbed(userId)
+      ],
+      components: matchButtons(userId)
     });
   }
 
-  m.minute += Math.floor(Math.random() * 8) + 2;
 
-  if (m.minute > 90) m.minute = 90;
+  /* =========================
+     NORMAL ACTION
+  ========================= */
 
   let success;
 
   if (owner) {
     success = true;
   } else {
-    const base = Math.max(0.35, Math.min(0.85, m.rating / 120));
-    success = Math.random() < base;
+
+    let chance =
+      m.rating / 120;
+
+    /*
+      Flow gives a temporary boost.
+    */
+
+    if (m.flowActive) {
+      chance += 0.18;
+    }
+
+    chance = Math.min(0.9, chance);
+
+    success = Math.random() < chance;
   }
 
+
+  /* =========================
+     SHOOT
+  ========================= */
+
   if (action === "shoot") {
+
     if (success) {
+
       m.score++;
+
       m.stats.goals++;
       m.stats.shotsOnTarget++;
+
+      /*
+        Scoring creates a Best Moment.
+      */
 
       m.bestMoment = true;
       m.worstMoment = false;
 
       addXP(p, 35);
 
-      await interaction.update({
-        embeds: [matchEmbed(userId)],
-        components: [matchButtons(userId)]
-      });
-
-      return;
-    }
-
-    m.stats.missedChances++;
-
-    // A failed attack can create a worst moment.
-    if (Math.random() < 0.35 || owner) {
-      m.worstMoment = true;
-      m.bestMoment = false;
-    }
-  }
-
-  if (action === "pass") {
-    if (success) {
-      m.stats.keyPasses++;
-
-      if (Math.random() < 0.25 || owner) {
-        m.stats.assists++;
-        m.bestMoment = true;
-        m.worstMoment = false;
-      }
     } else {
-      m.stats.badPasses++;
-      m.worstMoment = true;
-      m.bestMoment = false;
-    }
-  }
 
-  if (action === "dribble") {
-    if (success) {
-      m.stats.dribbles++;
+      m.stats.missedChances++;
 
-      if (Math.random() < 0.2 || owner) {
-        m.bestMoment = true;
-        m.worstMoment = false;
-      }
-    } else {
-      m.stats.turnovers++;
+      /*
+        Missing can create a Worst Moment.
+      */
 
-      if (Math.random() < 0.4 || owner) {
+      if (Math.random() < 0.45) {
         m.worstMoment = true;
         m.bestMoment = false;
       }
     }
   }
 
-  /*
-    Opponent attack.
-    Owner is protected from random negative stamina effects,
-    but the match can still progress.
-  */
 
-  if (!owner && Math.random() < 0.12) {
-    m.opponentScore++;
+  /* =========================
+     PASS
+  ========================= */
+
+  if (action === "pass") {
+
+    if (success) {
+
+      m.stats.keyPasses++;
+
+      if (Math.random() < 0.25) {
+
+        m.stats.assists++;
+
+        m.bestMoment = true;
+        m.worstMoment = false;
+      }
+
+    } else {
+
+      m.stats.badPasses++;
+
+      if (!owner) {
+        m.worstMoment = true;
+        m.bestMoment = false;
+      }
+    }
   }
 
+
+  /* =========================
+     DRIBBLE
+  ========================= */
+
+  if (action === "dribble") {
+
+    if (success) {
+
+      m.stats.dribbles++;
+
+      if (Math.random() < 0.25) {
+        m.bestMoment = true;
+        m.worstMoment = false;
+      }
+
+    } else {
+
+      m.stats.turnovers++;
+
+      if (!owner) {
+        m.worstMoment = true;
+        m.bestMoment = false;
+      }
+    }
+  }
+
+
+  /*
+    After the player's action, time moves forward.
+  */
+
+  advanceMatch(m);
+
+
+  /* =========================
+     MATCH FINISHED
+  ========================= */
+
   if (m.minute >= 90) {
+
     m.finished = true;
 
     const result =
@@ -575,19 +769,30 @@ async function processAction(interaction, action) {
         ? "loss"
         : "draw";
 
-    const finalRating = calculateRating(
-      m.stats,
-      result,
-      m.position
-    );
+    const finalRating =
+      calculateRating(
+        m.stats,
+        result,
+        m.position
+      );
 
     p.stats.matches++;
     p.stats.goals += m.stats.goals;
     p.stats.assists += m.stats.assists;
 
-    if (result === "win") p.stats.wins++;
-    if (result === "loss") p.stats.losses++;
-    if (result === "draw") p.stats.draws++;
+    if (result === "win") {
+      p.stats.wins++;
+      p.coins += 5000;
+    }
+
+    if (result === "loss") {
+      p.stats.losses++;
+    }
+
+    if (result === "draw") {
+      p.stats.draws++;
+      p.coins += 2000;
+    }
 
     if (finalRating > p.stats.bestRating) {
       p.stats.bestRating = finalRating;
@@ -600,37 +805,62 @@ async function processAction(interaction, action) {
       addXP(p, 30);
     }
 
-    if (result === "win") p.coins += 5000;
-    if (result === "draw") p.coins += 2000;
-
     save();
 
-    await interaction.update({
+    matches.delete(userId);
+
+    return interaction.update({
       embeds: [
         new EmbedBuilder()
-          .setTitle("🏁 Match Finished")
+          .setTitle("🏁 MATCH FINISHED")
           .setDescription(
-            `**${m.score} - ${m.opponentScore}**\n\n` +
+            `## ${m.score} - ${m.opponentScore}\n\n` +
+            `⏱️ **90'**\n` +
             `⭐ Final Rating: **${finalRating}**\n` +
             `🏆 Result: **${result.toUpperCase()}**`
           )
           .addFields(
-            { name: "Goals", value: `${m.stats.goals}`, inline: true },
-            { name: "Assists", value: `${m.stats.assists}`, inline: true },
-            { name: "Dribbles", value: `${m.stats.dribbles}`, inline: true },
-            { name: "Key Passes", value: `${m.stats.keyPasses}`, inline: true }
+            {
+              name: "⚽ Goals",
+              value: `${m.stats.goals}`,
+              inline: true
+            },
+            {
+              name: "🎯 Assists",
+              value: `${m.stats.assists}`,
+              inline: true
+            },
+            {
+              name: "🔥 Dribbles",
+              value: `${m.stats.dribbles}`,
+              inline: true
+            },
+            {
+              name: "🧠 Key Passes",
+              value: `${m.stats.keyPasses}`,
+              inline: true
+            },
+            {
+              name: "📈 Best Rating",
+              value: `${p.stats.bestRating}`,
+              inline: true
+            }
           )
       ],
       components: []
     });
-
-    matches.delete(userId);
-    return;
   }
 
+
+  /*
+    Match continues.
+  */
+
   await interaction.update({
-    embeds: [matchEmbed(userId)],
-    components: [matchButtons(userId)]
+    embeds: [
+      matchEmbed(userId)
+    ],
+    components: matchButtons(userId)
   });
 }
 
@@ -938,11 +1168,11 @@ async function handleCommand(message) {
       return message.reply("❌ You already have a match.");
     }
 
-    const m = createMatch(message.author.id);
+    createMatch(message.author.id);
 
     return message.reply({
       embeds: [matchEmbed(message.author.id)],
-      components: [matchButtons(message.author.id)]
+      components: matchButtons(message.author.id)
     });
   }
 
@@ -1041,46 +1271,58 @@ async function handleCommand(message) {
 }
 
 /* =========================
-   BUTTON HANDLER
+   BUTTON HANDLER — UPDATED
 ========================= */
 
 client.on("interactionCreate", async interaction => {
-  try {
-    if (!interaction.isButton()) return;
 
-    const parts = interaction.customId.split("_");
+  if (!interaction.isButton()) return;
+
+  try {
+
+    const parts =
+      interaction.customId.split("_");
+
+    const type = parts[0];
     const action = parts[1];
     const userId = parts[2];
 
+    if (type !== "match") return;
+
     if (interaction.user.id !== userId) {
+
       return interaction.reply({
         content: "❌ This isn't your match.",
         ephemeral: true
       });
     }
 
-    if (!matches.has(userId)) {
-      return interaction.reply({
-        content: "❌ This match has ended.",
-        ephemeral: true
-      });
-    }
-
     /*
-      IMPORTANT:
-      We acknowledge the interaction immediately through
-      processAction -> update/reply.
-      This prevents "didn't respond in time".
+      This handler ALWAYS acknowledges
+      the Discord interaction through
+      reply/update, preventing timeout.
     */
 
-    await processAction(interaction, action);
+    await processAction(
+      interaction,
+      action
+    );
 
-  } catch (err) {
-    console.error("Interaction error:", err);
+  } catch (error) {
 
-    if (!interaction.replied && !interaction.deferred) {
+    console.error(
+      "MATCH BUTTON ERROR:",
+      error
+    );
+
+    if (
+      !interaction.replied &&
+      !interaction.deferred
+    ) {
+
       await interaction.reply({
-        content: "❌ Something went wrong while processing that action.",
+        content:
+          "❌ Match system error.",
         ephemeral: true
       }).catch(() => {});
     }
@@ -1199,7 +1441,7 @@ client.on("interactionCreate", async interaction => {
 
       return interaction.reply({
         embeds: [matchEmbed(interaction.user.id)],
-        components: [matchButtons(interaction.user.id)]
+        components: matchButtons(interaction.user.id)
       });
     }
 
