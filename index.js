@@ -191,27 +191,216 @@ function normalize(s) {
   return String(s).toLowerCase().trim();
 }
 
-function findCharacter(input) {
-  const q = normalize(input);
-
-  if (aliases[q]) return characters[aliases[q].toLowerCase()];
-  if (characters[q]) return characters[q];
-
-  const found = Object.values(characters).find(c =>
-    normalize(c.name).includes(q) || q.includes(normalize(c.name))
-  );
-
-  return found || null;
+function clean(s) {
+  return normalize(s)
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
+function levenshtein(a, b) {
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+  }
+
+  return dp[a.length][b.length];
+}
+
+/*
+  Smart matcher: works with partial names, first/last names,
+  typos ("micheal", "kaizer", "bachria") and different casing.
+  `list` = array of { name, ... } objects. Earlier items win ties.
+*/
+function smartFind(input, list, fuzzy = true) {
+  const q = clean(input);
+  if (!q) return null;
+
+  const names = list.map(item => ({ item, n: clean(item.name) }));
+
+  // 1. exact
+  let hit = names.find(x => x.n === q);
+  if (hit) return hit.item;
+
+  // 2. any word starts with it ("kaiser", "isa", "ness", "rin")
+  hit = names.find(x => x.n.split(" ").some(w => w.startsWith(q)));
+  if (hit) return hit.item;
+
+  // 3. whole name starts with it ("michael k")
+  hit = names.find(x => x.n.startsWith(q));
+  if (hit) return hit.item;
+
+  // 4. contains it / it contains the name
+  hit = names.find(x => x.n.includes(q) || q.includes(x.n));
+  if (hit) return hit.item;
+
+  // 5. typo tolerance
+  if (!fuzzy) return null;
+
+  let best = null;
+  let bestDist = Infinity;
+
+  for (const x of names) {
+    const candidates = [x.n, ...x.n.split(" ")];
+
+    for (const c of candidates) {
+      const d = levenshtein(q, c);
+      if (d < bestDist) {
+        bestDist = d;
+        best = x.item;
+      }
+    }
+  }
+
+  const limit = Math.max(1, Math.floor(q.length / 3));
+  return bestDist <= limit ? best : null;
+}
+
+function findCharacter(input, fuzzy = true) {
+  const q = clean(input);
+  if (!q) return null;
+
+  if (aliases[q]) return characters[aliases[q].toLowerCase()];
+
+  return smartFind(input, Object.values(characters), fuzzy);
+}
+
+/*
+  Which Flow belongs to which character.
+  Edit this list however you want. "NEL" versions
+  automatically use the same Flow as the normal one.
+*/
+const CHARACTER_FLOWS = {
+  "michael kaiser": "Emperor",
+  "yoichi isagi": "Meta Vision",
+  "rin itoshi": "Destroyer",
+  "julian loki": "Godspeed",
+  "hyoma chigiri": "Godspeed",
+  "meguru bachira": "Monster",
+  "shoei barou": "King",
+  "ryusei shidou": "Street",
+  "lavinho": "Street",
+  "alexis ness": "Playmaker",
+  "charles chevalier": "Playmaker",
+  "yo hiori": "Playmaker",
+  "reo mikage": "Playmaker",
+  "don lorenzo": "Guardian",
+  "oliver aiku": "Guardian",
+  "ikki niko": "Guardian",
+  "marc snuffy": "Master",
+  "noel noa": "Master",
+  "seishiro nagi": "Master"
+};
+
+function flowOfCharacter(c) {
+  if (!c) return null;
+
+  let key = normalize(c.name);
+
+  // "Kaiser NEL" -> use the normal "Michael Kaiser" Flow
+  if (key.endsWith(" nel")) {
+    const base = findCharacter(key.replace(/ nel$/, ""), false);
+    if (base && !normalize(base.name).endsWith(" nel")) {
+      key = normalize(base.name);
+    }
+  }
+
+  const flowName = CHARACTER_FLOWS[key];
+
+  return flowName ? FLOWS[normalize(flowName)] : null;
+}
+
+/*
+  Accepts a Flow name ("emperor", "meta") OR a character
+  name ("kaiser", "isagi", "rin") and returns the Flow.
+*/
 function findFlow(input) {
-  const q = normalize(input);
+  if (!clean(input)) return null;
 
-  if (FLOWS[q]) return FLOWS[q];
+  // 1. Flow name, exact / partial (no typo guessing yet)
+  const byName = smartFind(input, Object.values(FLOWS), false);
+  if (byName) return byName;
 
-  return Object.values(FLOWS).find(f =>
-    normalize(f.name).includes(q)
-  ) || null;
+  // 2. Character name, exact / partial
+  const byChar = flowOfCharacter(findCharacter(input, false));
+  if (byChar) return byChar;
+
+  // 3. Typos: Flow first, then character
+  return (
+    smartFind(input, Object.values(FLOWS), true) ||
+    flowOfCharacter(findCharacter(input, true))
+  );
+}
+
+/* =========================
+   INFO EMBEDS
+========================= */
+
+function flowUsers(flow) {
+  return Object.entries(CHARACTER_FLOWS)
+    .filter(([, f]) => f === flow.name)
+    .map(([key]) => characters[key]?.name || key);
+}
+
+function flowInfoEmbed(flow) {
+  const users = flowUsers(flow);
+
+  return new EmbedBuilder()
+    .setTitle(`🔥 ${flow.name} Flow`)
+    .addFields(
+      {
+        name: "Skills",
+        value: flow.abilities.map((x, i) => `${i + 1}. ${x}`).join("\n")
+      },
+      {
+        name: "Used by",
+        value: users.length ? users.join(", ") : "—"
+      }
+    );
+}
+
+function allFlowsEmbed() {
+  const list = Object.values(FLOWS);
+
+  return new EmbedBuilder()
+    .setTitle(`🔥 Flow Info — ${list.length} Flows`)
+    .setDescription(
+      `There are **${list.length}** Flows. ` +
+      `Use \`/flow info <name>\` for details on one.`
+    )
+    .addFields(
+      list.map(f => ({
+        name: `🔥 ${f.name}`,
+        value: f.abilities.map(x => `• ${x}`).join("\n"),
+        inline: true
+      }))
+    );
+}
+
+function characterInfoEmbed(c) {
+  const flow = flowOfCharacter(c);
+
+  return new EmbedBuilder()
+    .setTitle(`⚽ ${c.name}`)
+    .setDescription(
+      `⭐ Rating: **${c.rating}**\n` +
+      `📍 Position: **${c.position}**\n` +
+      `🌍 Country: **${c.country}**\n` +
+      `🏟️ Club: **${c.club}**\n` +
+      `🔥 Flow: **${flow ? flow.name : "None"}**`
+    )
+    .addFields({
+      name: "Skills",
+      value: c.skills.map(x => `• ${x}`).join("\n")
+    });
 }
 
 /* =========================
@@ -879,6 +1068,13 @@ async function ownerCommand(message, args) {
 
   const command = args.shift()?.toLowerCase();
 
+  // Remove @mentions / raw IDs from the args so only the real
+  // value (character, amount, flow...) is left. Works with
+  // ",givechar @user kaiser" and ",givechar kaiser @user".
+  const target = message.mentions.users.first();
+
+  args = args.filter(a => !/^<@!?\d+>$/.test(a));
+
   if (command === "ownerhelp") {
     return message.reply(
       "**👑 OWNER COMMANDS**\n\n" +
@@ -908,8 +1104,6 @@ async function ownerCommand(message, args) {
 
     return message.reply("👑 **Owner stats activated.**");
   }
-
-  const target = message.mentions.users.first();
 
   if (
     [
@@ -1093,26 +1287,13 @@ async function handleCommand(message) {
   }
 
   if (command === "character" || command === "char") {
-    const c = findCharacter(args.join(" "));
+    const nameArgs = args[0]?.toLowerCase() === "info" ? args.slice(1) : args;
+
+    const c = findCharacter(nameArgs.join(" "));
 
     if (!c) return message.reply("❌ Character not found.");
 
-    return message.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle(`⚽ ${c.name}`)
-          .setDescription(
-            `⭐ Rating: **${c.rating}**\n` +
-            `📍 Position: **${c.position}**\n` +
-            `🌍 Country: **${c.country}**\n` +
-            `🏟️ Club: **${c.club}**`
-          )
-          .addFields({
-            name: "Skills",
-            value: c.skills.map(x => `• ${x}`).join("\n")
-          })
-      ]
-    });
+    return message.reply({ embeds: [characterInfoEmbed(c)] });
   }
 
   if (command === "setplayer") {
@@ -1240,11 +1421,27 @@ async function handleCommand(message) {
   }
 
   if (command === "flow") {
-    if (!p.activeFlow) {
+    const sub = args[0]?.toLowerCase();
+
+    if (sub === "info" || sub === "list") {
+      const rest = args.slice(1).join(" ");
+
+      if (!rest) return message.reply({ embeds: [allFlowsEmbed()] });
+
+      const f = findFlow(rest);
+
+      if (!f) return message.reply("❌ Flow not found.");
+
+      return message.reply({ embeds: [flowInfoEmbed(f)] });
+    }
+
+    if (!args.length && !p.activeFlow) {
       return message.reply("❌ You don't have an active Flow.");
     }
 
-    const f = findFlow(p.activeFlow);
+    const f = args.length ? findFlow(args.join(" ")) : findFlow(p.activeFlow);
+
+    if (!f) return message.reply("❌ Flow not found.");
 
     return message.reply(
       `🔥 **${f.name} Flow**\n\n` +
@@ -1261,7 +1458,9 @@ async function handleCommand(message) {
       "`,roll` — Roll character\n" +
       "`,unlockflow <flow>` — Unlock Flow\n" +
       "`,setflow <flow>` — Set Flow\n" +
-      "`,flow` — Flow information\n" +
+      "`,flow` — Your Flow information\n" +
+      "`,flow info [name]` — All Flows and their skills\n" +
+      "`,character info <name>` — Character info\n" +
       "`,match` — Start match\n" +
       "`,train` — Train\n" +
       "`,rest` — Restore stamina\n" +
@@ -1374,11 +1573,28 @@ const slashCommands = [
 
   new SlashCommandBuilder()
     .setName("character")
-    .setDescription("View a character")
-    .addStringOption(o =>
-      o.setName("name")
-        .setDescription("Character name")
-        .setRequired(true)
+    .setDescription("Character commands")
+    .addSubcommand(sc =>
+      sc.setName("info")
+        .setDescription("View a character's info")
+        .addStringOption(o =>
+          o.setName("name")
+            .setDescription("Character name (partial names work)")
+            .setRequired(true)
+        )
+    ),
+
+  new SlashCommandBuilder()
+    .setName("flow")
+    .setDescription("Flow commands")
+    .addSubcommand(sc =>
+      sc.setName("info")
+        .setDescription("See how many Flows there are and their skills")
+        .addStringOption(o =>
+          o.setName("name")
+            .setDescription("Flow or character name (leave empty to see all)")
+            .setRequired(false)
+        )
     ),
 
   new SlashCommandBuilder()
@@ -1492,13 +1708,21 @@ client.on("interactionCreate", async interaction => {
 
       if (!c) return interaction.reply("❌ Character not found.");
 
-      return interaction.reply(
-        `⚽ **${c.name}**\n` +
-        `⭐ ${c.rating} OVR\n` +
-        `📍 ${c.position}\n` +
-        `🏟️ ${c.club}\n\n` +
-        `**Skills:** ${c.skills.join(", ")}`
-      );
+      return interaction.reply({ embeds: [characterInfoEmbed(c)] });
+    }
+
+    if (interaction.commandName === "flow") {
+      const name = interaction.options.getString("name");
+
+      if (!name) {
+        return interaction.reply({ embeds: [allFlowsEmbed()] });
+      }
+
+      const f = findFlow(name);
+
+      if (!f) return interaction.reply("❌ Flow not found.");
+
+      return interaction.reply({ embeds: [flowInfoEmbed(f)] });
     }
 
     if (interaction.commandName === "unlockflow") {
