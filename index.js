@@ -51,8 +51,48 @@ try {
   db = {};
 }
 
+let saveTimer = null;
+
+function saveNow() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+
+  try {
+    const tmp = dbFile + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
+    fs.renameSync(tmp, dbFile);
+  } catch (err) {
+    console.error("Save error:", err);
+  }
+}
+
+// Saves a moment later instead of blocking every button click.
 function save() {
-  fs.writeFileSync(dbFile, JSON.stringify(db, null, 2));
+  if (saveTimer) return;
+  saveTimer = setTimeout(saveNow, 300);
+}
+
+process.on("SIGTERM", () => { saveNow(); process.exit(0); });
+process.on("SIGINT", () => { saveNow(); process.exit(0); });
+process.on("unhandledRejection", err => console.error("Unhandled rejection:", err));
+process.on("uncaughtException", err => console.error("Uncaught exception:", err));
+
+/*
+  Safe reply: never throws and always picks reply / followUp correctly.
+  This is what stops "This interaction failed" when something goes wrong.
+*/
+async function safeRespond(interaction, payload) {
+  try {
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ ...payload, flags: 64 });
+    } else {
+      await interaction.reply({ ...payload, flags: 64 });
+    }
+  } catch (err) {
+    console.error("safeRespond failed:", err.message);
+  }
 }
 
 /* =========================
@@ -100,7 +140,42 @@ const CHARACTERS = [
   ["Lorenzo NEL", 97, "CB", "Italy", "Ubers", ["Man Marking", "Zombie Dribble", "Ace Eater"]],
   ["Snuffy NEL", 100, "ST", "Italy", "Ubers", ["Master Vision", "Tactics", "Perfect Position"]],
   ["Loki NEL", 100, "ST", "France", "Paris X Gen", ["Godspeed", "Lightning", "Acceleration"]],
-  ["Lavinho NEL", 100, "LW", "Brazil", "FC Barcha", ["Magician", "Brazilian Dance", "Creative Dribble"]]
+  ["Lavinho NEL", 100, "LW", "Brazil", "FC Barcha", ["Magician", "Brazilian Dance", "Creative Dribble"]],
+
+  // ----- More Blue Lock characters (ratings are estimates) -----
+  ["Sae Itoshi", 99, "CM", "Japan", "Re Al", ["Master Pass", "World's Vision", "Absolute Control"]],
+  ["Leonardo Luna", 98, "CM", "Spain", "Re Al", ["Royal Vision", "Scion Pass", "Crown Control"]],
+  ["Chris Prince", 99, "ST", "England", "Manshine City", ["Master Strike", "Power Surge", "Prince's Shot"]],
+  ["Benedict Grim", 90, "CM", "Germany", "Bastard München", ["Playmaker Vision", "Smart Pass", "Build-Up Play"]],
+  ["Ignacio Lara", 88, "ST", "Spain", "FC Barcha", ["Barcha Flair", "Sharp Dribble", "Link Pass"]],
+  ["Jingo Raichi", 84, "ST", "Japan", "Bastard München", ["Shark Bite", "Iron Stamina", "Fierce Press"]],
+  ["Jin Kiyora", 87, "ST", "Japan", "Bastard München", ["Silent Finish", "Cool Head", "Precise Shot"]],
+  ["Ranze Kurona", 86, "LW", "Japan", "Bastard München", ["Wild Instinct", "Predator Run", "Sharp Dribble"]],
+  ["Gurimu Igarashi", 75, "ST", "Japan", "Bastard München", ["Persistence", "Hard Foul", "Never Give Up"]],
+  ["Teppei Neru", 76, "ST", "Japan", "Bastard München", ["Reserve Spark", "Hustle", "Quick Shot"]],
+  ["Mensah", 82, "CB", "Germany", "Bastard München", ["Team Play", "Strong Tackle", "Hustle"]],
+  ["Bachman", 80, "GK", "Germany", "Bastard München", ["Team Play", "Quick Reflex", "Hustle"]],
+  ["Ndiaye", 80, "CB", "Germany", "Bastard München", ["Team Play", "Strong Tackle", "Hustle"]],
+  ["Nijiro Nanase", 82, "ST", "Japan", "Paris X Gen", ["Sharp Cut", "Lightning Touch", "Fast Break"]],
+  ["Aoshi Tokimitsu", 80, "ST", "Japan", "Paris X Gen", ["Hustle", "Heavy Block", "Quick Shot"]],
+  ["Debussy", 82, "CM", "France", "Paris X Gen", ["Team Play", "Quick Pass", "Hustle"]],
+  ["Poussin", 80, "CM", "France", "Paris X Gen", ["Team Play", "Quick Pass", "Hustle"]],
+  ["Ohana", 80, "ST", "France", "Paris X Gen", ["Team Play", "Quick Shot", "Hustle"]],
+  ["Domenech", 81, "CB", "France", "Paris X Gen", ["Team Play", "Strong Tackle", "Hustle"]],
+  ["Cousin", 80, "LW", "France", "Paris X Gen", ["Team Play", "Quick Step", "Hustle"]],
+  ["Cucuron", 79, "RW", "France", "Paris X Gen", ["Team Play", "Quick Step", "Hustle"]],
+  ["Shuto Sendo", 84, "CM", "Japan", "Ubers", ["Hot Blood", "Fierce Dribble", "Rapid Burst"]],
+  ["Junichi Wanima", 80, "ST", "Japan", "Manshine City", ["Top Scorer Instinct", "Twin Link", "Power Volley"]],
+  ["Young", 79, "CM", "England", "Manshine City", ["Team Play", "Quick Pass", "Hustle"]],
+  ["Arthur", 80, "CB", "England", "Manshine City", ["Team Play", "Strong Tackle", "Hustle"]],
+  ["Damon", 79, "ST", "England", "Manshine City", ["Team Play", "Quick Shot", "Hustle"]],
+  ["Wataru Kuon", 74, "ST", "Japan", "Blue Lock", ["Leadership", "Team Tactics", "Defensive Anchor"]],
+  ["Yudai Imamura", 70, "RW", "Japan", "Blue Lock", ["Quick Feet", "Speed Rush", "Flashy Trick"]],
+  ["Asahi Naruhaya", 76, "LW", "Japan", "Blue Lock", ["Fast Footwork", "Quick Step", "Close Dribble"]],
+  ["Okuhito Iemon", 70, "GK", "Japan", "Blue Lock", ["Keeper Reflex", "Goalkeeping", "Distribution"]],
+  ["Ryosuke Kira", 80, "ST", "Japan", "Blue Lock", ["Crown Shot", "Technical Finish", "Calm Finish"]],
+  ["Keisuke Wanima", 72, "ST", "Japan", "Blue Lock", ["Twin Link", "Side-B Drive", "Quick Strike"]],
+  ["Reiji Hiiragi", 74, "ST", "Japan", "Blue Lock", ["Persistence", "Quick Feet", "Hustle"]]
 ];
 
 const characters = Object.fromEntries(
@@ -521,7 +596,19 @@ function getPlayer(id) {
     save();
   }
 
-  return db[id];
+  const p = db[id];
+
+  // Backfill new fields for old saves.
+  if (!Array.isArray(p.team)) p.team = [];
+  if (!Array.isArray(p.offers)) p.offers = [];
+  if (!Array.isArray(p.trophies)) p.trophies = [];
+  if (!Array.isArray(p.clubInterest)) p.clubInterest = [];
+  if (!p.season) p.season = newSeason(1);
+  if (p.contract === undefined) p.contract = null;
+  if (!p.league) p.league = "—";
+  if (!p.offerSeq) p.offerSeq = 0;
+
+  return p;
 }
 
 /* =========================
@@ -536,6 +623,765 @@ function addXP(p, amount) {
     p.level++;
     p.rating = Math.min(99, p.rating + 1);
   }
+}
+
+/* =========================
+   CLUBS, LEAGUES & TROPHIES
+========================= */
+
+const SEASON_MATCHES = 8;   // matches per season
+const TEAM_MAX = 10;        // max teammates
+
+const LEAGUES = {
+  "Neo Egoist League": { title: "Neo Egoist League Title", cup: null, leagueCup: null, superCup: null, confed: null },
+  "Premier League": { title: "Premier League Title", cup: "FA Cup", leagueCup: "EFL Cup", superCup: "FA Community Shield", confed: "UEFA" },
+  "La Liga": { title: "La Liga Title", cup: "Copa del Rey", leagueCup: null, superCup: "Supercopa de España", confed: "UEFA" },
+  "Bundesliga": { title: "Bundesliga Title", cup: "DFB-Pokal", leagueCup: null, superCup: "DFL-Supercup", confed: "UEFA" },
+  "Serie A": { title: "Serie A Title", cup: "Coppa Italia", leagueCup: null, superCup: "Supercoppa Italiana", confed: "UEFA" },
+  "Ligue 1": { title: "Ligue 1 Title", cup: "Coupe de France", leagueCup: null, superCup: "Trophée des Champions", confed: "UEFA" },
+  "Eredivisie": { title: "Eredivisie Title", cup: "KNVB Cup", leagueCup: null, superCup: "Johan Cruyff Shield", confed: "UEFA" },
+  "Primeira Liga": { title: "Primeira Liga Title", cup: "Taça de Portugal", leagueCup: "Taça da Liga", superCup: "Supertaça Cândido de Oliveira", confed: "UEFA" },
+  "Süper Lig": { title: "Süper Lig Title", cup: "Turkish Cup", leagueCup: null, superCup: "Turkish Super Cup", confed: "UEFA" },
+  "Scottish Premiership": { title: "Scottish Premiership Title", cup: "Scottish Cup", leagueCup: "Scottish League Cup", superCup: null, confed: "UEFA" },
+  "J1 League": { title: "J1 League Title", cup: "Emperor's Cup", leagueCup: "J.League Cup", superCup: "Japanese Super Cup", confed: "AFC" },
+  "Saudi Pro League": { title: "Saudi Pro League Title", cup: "King's Cup", leagueCup: null, superCup: "Saudi Super Cup", confed: "AFC" },
+  "MLS": { title: "MLS Cup", cup: "U.S. Open Cup", leagueCup: "Leagues Cup", superCup: null, confed: "CONCACAF" },
+  "Brasileirão": { title: "Brasileirão Title", cup: "Copa do Brasil", leagueCup: null, superCup: "Supercopa do Brasil", confed: "CONMEBOL" },
+  "Liga Profesional": { title: "Argentine Primera División Title", cup: "Copa Argentina", leagueCup: null, superCup: "Supercopa Argentina", confed: "CONMEBOL" }
+};
+
+const CONTINENTAL = {
+  AFC: "AFC Champions League Elite",
+  CONMEBOL: "Copa Libertadores",
+  CONCACAF: "CONCACAF Champions Cup"
+};
+
+// [name, league, tier]   tier 1 = elite ... 4 = smaller club
+const CLUBS = [
+  ["Bastard München", "Neo Egoist League", 1],
+  ["FC Barcha", "Neo Egoist League", 1],
+  ["Manshine City", "Neo Egoist League", 1],
+  ["Ubers", "Neo Egoist League", 1],
+  ["Paris X Gen", "Neo Egoist League", 1],
+  ["Re Al", "La Liga", 1],
+
+  ["Manchester City", "Premier League", 1],
+  ["Liverpool", "Premier League", 1],
+  ["Arsenal", "Premier League", 1],
+  ["Chelsea", "Premier League", 2],
+  ["Manchester United", "Premier League", 2],
+  ["Tottenham", "Premier League", 2],
+  ["Newcastle United", "Premier League", 3],
+  ["Aston Villa", "Premier League", 3],
+  ["Brighton", "Premier League", 4],
+
+  ["Real Madrid", "La Liga", 1],
+  ["Barcelona", "La Liga", 1],
+  ["Atlético Madrid", "La Liga", 2],
+  ["Sevilla", "La Liga", 3],
+  ["Real Sociedad", "La Liga", 3],
+  ["Villarreal", "La Liga", 3],
+  ["Athletic Club", "La Liga", 3],
+  ["Valencia", "La Liga", 4],
+
+  ["Bayern Munich", "Bundesliga", 1],
+  ["Borussia Dortmund", "Bundesliga", 2],
+  ["Bayer Leverkusen", "Bundesliga", 2],
+  ["RB Leipzig", "Bundesliga", 2],
+  ["Eintracht Frankfurt", "Bundesliga", 3],
+  ["VfB Stuttgart", "Bundesliga", 3],
+
+  ["Inter", "Serie A", 1],
+  ["AC Milan", "Serie A", 2],
+  ["Juventus", "Serie A", 2],
+  ["Napoli", "Serie A", 2],
+  ["Roma", "Serie A", 3],
+  ["Lazio", "Serie A", 3],
+  ["Atalanta", "Serie A", 3],
+  ["Fiorentina", "Serie A", 4],
+
+  ["Paris Saint-Germain", "Ligue 1", 1],
+  ["Monaco", "Ligue 1", 2],
+  ["Marseille", "Ligue 1", 3],
+  ["Lyon", "Ligue 1", 3],
+  ["Lille", "Ligue 1", 4],
+
+  ["Ajax", "Eredivisie", 3],
+  ["PSV Eindhoven", "Eredivisie", 3],
+  ["Feyenoord", "Eredivisie", 3],
+
+  ["Benfica", "Primeira Liga", 2],
+  ["Porto", "Primeira Liga", 2],
+  ["Sporting CP", "Primeira Liga", 2],
+
+  ["Galatasaray", "Süper Lig", 3],
+  ["Fenerbahçe", "Süper Lig", 3],
+  ["Beşiktaş", "Süper Lig", 4],
+
+  ["Celtic", "Scottish Premiership", 3],
+  ["Rangers", "Scottish Premiership", 3],
+
+  ["Vissel Kobe", "J1 League", 3],
+  ["Yokohama F. Marinos", "J1 League", 3],
+  ["Urawa Reds", "J1 League", 3],
+  ["Kashima Antlers", "J1 League", 3],
+  ["Kawasaki Frontale", "J1 League", 3],
+  ["Gamba Osaka", "J1 League", 4],
+  ["Sanfrecce Hiroshima", "J1 League", 4],
+
+  ["Al Hilal", "Saudi Pro League", 2],
+  ["Al Nassr", "Saudi Pro League", 2],
+  ["Al Ittihad", "Saudi Pro League", 3],
+  ["Al Ahli", "Saudi Pro League", 3],
+
+  ["Inter Miami", "MLS", 3],
+  ["LA Galaxy", "MLS", 3],
+  ["LAFC", "MLS", 3],
+  ["Seattle Sounders", "MLS", 4],
+
+  ["Flamengo", "Brasileirão", 2],
+  ["Palmeiras", "Brasileirão", 2],
+  ["Corinthians", "Brasileirão", 3],
+  ["São Paulo", "Brasileirão", 3],
+
+  ["Boca Juniors", "Liga Profesional", 2],
+  ["River Plate", "Liga Profesional", 2]
+];
+
+const CLUB_LIST = CLUBS.map(([name, league, tier]) => ({ name, league, tier }));
+
+const CLUB_ALIASES = {
+  "man city": "Manchester City",
+  "city": "Manchester City",
+  "man utd": "Manchester United",
+  "man united": "Manchester United",
+  "united": "Manchester United",
+  "spurs": "Tottenham",
+  "real": "Real Madrid",
+  "barca": "Barcelona",
+  "atletico": "Atlético Madrid",
+  "bayern": "Bayern Munich",
+  "dortmund": "Borussia Dortmund",
+  "bvb": "Borussia Dortmund",
+  "leipzig": "RB Leipzig",
+  "juve": "Juventus",
+  "milan": "AC Milan",
+  "psg": "Paris Saint-Germain",
+  "paris": "Paris X Gen",
+  "pxg": "Paris X Gen",
+  "munchen": "Bastard München",
+  "munich": "Bastard München",
+  "bm": "Bastard München",
+  "manshine": "Manshine City",
+  "miami": "Inter Miami",
+  "galaxy": "LA Galaxy",
+  "kobe": "Vissel Kobe",
+  "marinos": "Yokohama F. Marinos",
+  "boca": "Boca Juniors",
+  "river": "River Plate"
+};
+
+function findClub(input, fuzzy = true) {
+  const q = clean(input);
+  if (!q) return null;
+
+  if (CLUB_ALIASES[q]) {
+    return CLUB_LIST.find(c => c.name === CLUB_ALIASES[q]) || null;
+  }
+
+  return smartFind(input, CLUB_LIST, fuzzy);
+}
+
+function findLeague(input) {
+  const list = Object.keys(LEAGUES).map(name => ({ name }));
+  const hit = smartFind(input, list, true);
+  return hit ? hit.name : null;
+}
+
+const TIER_INFO = {
+  1: { min: 88, bonus: 500000, wage: 8000 },
+  2: { min: 78, bonus: 250000, wage: 5000 },
+  3: { min: 68, bonus: 120000, wage: 3000 },
+  4: { min: 0, bonus: 50000, wage: 1500 }
+};
+
+/* ---------- Trophies ---------- */
+
+const GLOBAL_TROPHIES = [
+  "UEFA Champions League",
+  "UEFA Europa League",
+  "UEFA Conference League",
+  "UEFA Super Cup",
+  "FIFA Club World Cup",
+  "AFC Champions League Elite",
+  "Copa Libertadores",
+  "CONCACAF Champions Cup",
+  "FIFA World Cup",
+  "UEFA European Championship",
+  "Copa América",
+  "AFC Asian Cup",
+  "Africa Cup of Nations",
+  "CONCACAF Gold Cup",
+  "UEFA Nations League",
+  "Olympic Gold Medal",
+  "Ballon d'Or",
+  "FIFA The Best",
+  "Puskás Award",
+  "World Cup Golden Boot",
+  "World Cup Golden Ball",
+  "Golden Glove",
+  "Neo Egoist League MVP"
+];
+
+function buildTrophyCatalog() {
+  const list = [...GLOBAL_TROPHIES];
+
+  for (const [name, l] of Object.entries(LEAGUES)) {
+    list.push(l.title);
+    if (l.cup) list.push(l.cup);
+    if (l.leagueCup) list.push(l.leagueCup);
+    if (l.superCup) list.push(l.superCup);
+
+    list.push(
+      `${name} Golden Boot`,
+      `${name} Player of the Season`,
+      `${name} Team of the Season`
+    );
+  }
+
+  return [...new Set(list)];
+}
+
+const TROPHY_CATALOG = buildTrophyCatalog();
+const TROPHY_LIST = TROPHY_CATALOG.map(name => ({ name }));
+
+function findTrophy(input) {
+  return smartFind(input, TROPHY_LIST, true);
+}
+
+const COUNTRY_CONFED = {
+  "Japan": "AFC", "South Korea": "AFC", "Australia": "AFC", "Saudi Arabia": "AFC",
+  "Germany": "UEFA", "France": "UEFA", "Italy": "UEFA", "England": "UEFA", "Spain": "UEFA",
+  "Portugal": "UEFA", "Netherlands": "UEFA", "Belgium": "UEFA", "Croatia": "UEFA",
+  "Brazil": "CONMEBOL", "Argentina": "CONMEBOL", "Uruguay": "CONMEBOL", "Colombia": "CONMEBOL",
+  "USA": "CONCACAF", "Mexico": "CONCACAF",
+  "Senegal": "CAF", "Nigeria": "CAF", "Morocco": "CAF", "Ghana": "CAF"
+};
+
+const CONFED_CUP = {
+  UEFA: "UEFA European Championship",
+  CONMEBOL: "Copa América",
+  AFC: "AFC Asian Cup",
+  CAF: "Africa Cup of Nations",
+  CONCACAF: "CONCACAF Gold Cup"
+};
+
+const INTERNATIONAL_SCHEDULE = {
+  0: "🌍 FIFA World Cup",
+  1: "🇪🇺 UEFA Nations League (UEFA nations)",
+  2: "🏆 Continental Championship (Euro / Copa América / Asian Cup...)",
+  3: "🥇 Olympic Games"
+};
+
+function newSeason(number) {
+  return {
+    number,
+    matches: 0,
+    wins: 0,
+    draws: 0,
+    goals: 0,
+    assists: 0,
+    ratingSum: 0
+  };
+}
+
+function isAward(name) {
+  return /Ballon|Best|Puskás|Golden|Player of|Team of|MVP/.test(name);
+}
+
+function trophyCounts(p) {
+  const counts = new Map();
+
+  for (const t of p.trophies) {
+    const name = typeof t === "string" ? t : t.name;
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+
+  return counts;
+}
+
+function trophyEmbed(userId, title) {
+  const p = getPlayer(userId);
+  const counts = trophyCounts(p);
+
+  const lines = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([name, n]) =>
+      `${isAward(name) ? "⭐" : "🏆"} ${name}${n > 1 ? ` ×${n}` : ""}`
+    );
+
+  return new EmbedBuilder()
+    .setTitle(title || "🏆 Trophy Cabinet")
+    .setDescription(
+      lines.length
+        ? lines.join("\n").slice(0, 4000)
+        : "Your cabinet is empty. Play matches and finish seasons to win trophies!"
+    )
+    .addFields(
+      { name: "Total", value: `${p.trophies.length}`, inline: true },
+      { name: "Season", value: `${p.season.number}`, inline: true }
+    );
+}
+
+function trophyCatalogEmbed() {
+  return new EmbedBuilder()
+    .setTitle(`🏆 All Trophies & Awards (${TROPHY_CATALOG.length})`)
+    .setDescription(
+      TROPHY_CATALOG.map(t => `${isAward(t) ? "⭐" : "🏆"} ${t}`).join("\n").slice(0, 4000)
+    );
+}
+
+function seasonEmbed(userId) {
+  const p = getPlayer(userId);
+  const s = p.season;
+
+  const avg = s.matches ? (s.ratingSum / s.matches).toFixed(2) : "—";
+  const losses = s.matches - s.wins - s.draws;
+
+  return new EmbedBuilder()
+    .setTitle(`📅 Season ${s.number}`)
+    .setDescription(
+      `Progress: **${s.matches}/${SEASON_MATCHES}** matches\n` +
+      `Trophies are decided when the season ends.`
+    )
+    .addFields(
+      { name: "Club", value: p.club, inline: true },
+      { name: "League", value: p.league, inline: true },
+      { name: "Record", value: `${s.wins}W ${s.draws}D ${losses}L`, inline: true },
+      { name: "Goals", value: `${s.goals}`, inline: true },
+      { name: "Assists", value: `${s.assists}`, inline: true },
+      { name: "Avg Rating", value: `${avg}`, inline: true },
+      { name: "International event", value: INTERNATIONAL_SCHEDULE[s.number % 4] }
+    );
+}
+
+/* ---------- End of season: decide trophies ---------- */
+
+function endSeason(userId) {
+  const p = getPlayer(userId);
+  const s = p.season;
+
+  const char = p.activePlayer ? findCharacter(p.activePlayer, false) : null;
+  const ovr = char?.rating || p.rating;
+  const position = char?.position || p.position;
+  const country = char?.country || p.country;
+
+  const club = findClub(p.club, false);
+  const league = club ? LEAGUES[club.league] : null;
+
+  const played = Math.max(1, s.matches);
+  const avg = s.ratingSum / played;
+  const winRate = s.wins / played;
+
+  const tierBonus = { 1: 0.12, 2: 0.06, 3: 0, 4: -0.06 }[club?.tier] ?? -0.06;
+
+  const strength = Math.max(
+    0.1,
+    Math.min(0.92, 0.2 + winRate * 0.45 + ((avg - 6) / 4) * 0.35 + tierBonus)
+  );
+
+  const won = [];
+  const give = name => {
+    p.trophies.push({ name, season: s.number, club: p.club });
+    won.push(name);
+  };
+  const roll = x => Math.random() < x;
+
+  let wonLeague = false;
+  let wonCup = false;
+  let wonContinental = false;
+
+  if (league) {
+    if (roll(strength)) { give(league.title); wonLeague = true; }
+    if (league.cup && roll(strength * 0.7)) { give(league.cup); wonCup = true; }
+    if (league.leagueCup && roll(strength * 0.6)) give(league.leagueCup);
+    if (league.superCup && (wonLeague || wonCup) && roll(strength * 0.6)) give(league.superCup);
+
+    // Continental competition
+    let cont = null;
+    let factor = 0.55;
+
+    if (league.confed === "UEFA") {
+      if (club.tier <= 2 || wonLeague) { cont = "UEFA Champions League"; factor = 0.5; }
+      else if (club.tier === 3) { cont = "UEFA Europa League"; factor = 0.6; }
+      else { cont = "UEFA Conference League"; factor = 0.65; }
+    } else if (league.confed) {
+      cont = CONTINENTAL[league.confed];
+    }
+
+    if (cont && roll(strength * factor)) {
+      give(cont);
+      wonContinental = true;
+
+      if (cont === "UEFA Champions League" && roll(0.55)) give("UEFA Super Cup");
+      if (roll(0.45)) give("FIFA Club World Cup");
+    }
+
+    // League awards
+    if (s.goals >= 6 && roll(0.7)) give(`${club.league} Golden Boot`);
+    if (avg >= 7.6 && roll(0.6)) give(`${club.league} Player of the Season`);
+    if (avg >= 7.0 && roll(0.7)) give(`${club.league} Team of the Season`);
+
+    if (club.league === "Neo Egoist League" && avg >= 7.8 && roll(0.6)) {
+      give("Neo Egoist League MVP");
+    }
+  }
+
+  if (position === "GK" && avg >= 7.2 && roll(0.6)) give("Golden Glove");
+  if (s.goals >= 3 && roll(0.08)) give("Puskás Award");
+
+  if (avg >= 8.2 && (wonLeague || wonContinental) && s.goals + s.assists >= 6) {
+    if (roll(0.65)) give("Ballon d'Or");
+    else if (roll(0.5)) give("FIFA The Best");
+  }
+
+  // International tournaments
+  const natStrength = Math.max(
+    0.05,
+    Math.min(0.75, 0.1 + ((ovr - 60) / 100) * 0.45 + ((avg - 6) / 4) * 0.3 + winRate * 0.15)
+  );
+
+  const confed = COUNTRY_CONFED[country];
+  const step = s.number % 4;
+
+  if (step === 0) {
+    if (roll(natStrength)) {
+      give("FIFA World Cup");
+      if (avg >= 7.5 && roll(0.6)) give("World Cup Golden Ball");
+    }
+    if (s.goals >= 6 && roll(0.4)) give("World Cup Golden Boot");
+  } else if (step === 1) {
+    if (confed === "UEFA" && roll(natStrength * 0.8)) give("UEFA Nations League");
+  } else if (step === 2) {
+    if (confed && roll(natStrength * 0.9)) give(CONFED_CUP[confed]);
+  } else if (step === 3) {
+    if (roll(natStrength * 0.7)) give("Olympic Gold Medal");
+  }
+
+  const summary = { number: s.number, won, avg };
+
+  p.season = newSeason(s.number + 1);
+
+  return summary;
+}
+
+function recordSeason(userId, m, finalRating, result) {
+  const p = getPlayer(userId);
+  const s = p.season;
+
+  s.matches++;
+  if (result === "win") s.wins++;
+  if (result === "draw") s.draws++;
+  s.goals += m.stats.goals;
+  s.assists += m.stats.assists;
+  s.ratingSum += finalRating;
+
+  if (s.matches >= SEASON_MATCHES) return endSeason(userId);
+
+  return null;
+}
+
+/* ---------- Club offers ---------- */
+
+function makeOffer(userId, finalRating, playerRating) {
+  const p = getPlayer(userId);
+
+  if (p.offers.length >= 5) return null;
+  if (finalRating < 7.5) return null;
+
+  const chance = Math.min(0.9, (finalRating - 7) * 0.5);
+  if (Math.random() > chance) return null;
+
+  const taken = new Set([p.club, ...p.offers.map(o => o.club)]);
+  const bonusRating = finalRating >= 8.5 ? 4 : 0;
+
+  const pool = CLUB_LIST.filter(
+    c => !taken.has(c.name) && TIER_INFO[c.tier].min <= playerRating + bonusRating
+  );
+
+  if (!pool.length) return null;
+
+  // Great games attract bigger clubs.
+  const weightOf = c =>
+    finalRating >= 8.5
+      ? { 1: 4, 2: 3, 3: 1, 4: 0.5 }[c.tier]
+      : { 1: 1, 2: 2, 3: 3, 4: 3 }[c.tier];
+
+  const total = pool.reduce((sum, c) => sum + weightOf(c), 0);
+  let pick = Math.random() * total;
+  let club = pool[0];
+
+  for (const c of pool) {
+    pick -= weightOf(c);
+    if (pick <= 0) { club = c; break; }
+  }
+
+  return addOffer(userId, club);
+}
+
+function addOffer(userId, club) {
+  const p = getPlayer(userId);
+  const info = TIER_INFO[club.tier];
+
+  p.offerSeq++;
+
+  const offer = {
+    id: p.offerSeq,
+    club: club.name,
+    league: club.league,
+    tier: club.tier,
+    wage: info.wage,
+    bonus: info.bonus
+  };
+
+  p.offers.push(offer);
+  p.clubInterest.push(club.name);
+  if (p.clubInterest.length > 20) p.clubInterest.shift();
+
+  save();
+  return offer;
+}
+
+function offerView(userId) {
+  const p = getPlayer(userId);
+
+  if (!p.offers.length) {
+    return {
+      content: "📭 You have no club offers right now. Play well in matches (7.5+ rating) to attract clubs!"
+    };
+  }
+
+  const o = p.offers[0];
+
+  const embed = new EmbedBuilder()
+    .setTitle(`📩 Offer from ${o.club}`)
+    .setDescription(
+      `**${o.club}** (${o.league}) wants to sign you!\n` +
+      `You have **${p.offers.length}** pending offer${p.offers.length > 1 ? "s" : ""}.`
+    )
+    .addFields(
+      { name: "Signing Bonus", value: `${o.bonus.toLocaleString()} coins`, inline: true },
+      { name: "Wage", value: `${o.wage.toLocaleString()} / match`, inline: true },
+      { name: "Club Tier", value: `${o.tier}`, inline: true },
+      { name: "Current Club", value: p.club, inline: true }
+    );
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`offer_accept_${userId}_${o.id}`)
+      .setLabel("Accept")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`offer_deny_${userId}_${o.id}`)
+      .setLabel("Deny")
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  return { embeds: [embed], components: [row] };
+}
+
+function applyClub(userId, clubName) {
+  const p = getPlayer(userId);
+  const c = findClub(clubName, false);
+
+  p.club = c ? c.name : clubName;
+  p.league = c ? c.league : "—";
+
+  return cleanTeam(userId);
+}
+
+async function processOffer(interaction, action, userId, offerId) {
+  const p = getPlayer(userId);
+
+  const idx = p.offers.findIndex(o => String(o.id) === String(offerId));
+
+  if (idx === -1) {
+    return interaction.update({
+      content: "❌ This offer is no longer available.",
+      embeds: [],
+      components: []
+    });
+  }
+
+  const offer = p.offers[idx];
+  p.offers.splice(idx, 1);
+
+  let text;
+
+  if (action === "accept") {
+    p.coins += offer.bonus;
+    p.contract = { club: offer.club, wage: offer.wage };
+
+    const removed = applyClub(userId, offer.club);
+
+    text =
+      `✅ You signed for **${offer.club}**!\n` +
+      `💰 Signing bonus: **${offer.bonus.toLocaleString()} coins**\n` +
+      `💼 Wage: **${offer.wage.toLocaleString()} / match**`;
+
+    if (removed.length) {
+      text += `\n🔄 Left your team (different club): ${removed.join(", ")}`;
+    }
+  } else {
+    text = `❌ You declined the offer from **${offer.club}**.`;
+  }
+
+  save();
+
+  const next = offerView(userId);
+
+  if (!p.offers.length) {
+    return interaction.update({ content: text, embeds: [], components: [] });
+  }
+
+  return interaction.update({
+    content: text,
+    embeds: next.embeds,
+    components: next.components
+  });
+}
+
+/* ---------- Team (squad) ---------- */
+
+function clubKeyOf(p) {
+  return !p.club || p.club === "Free Agent" ? "Blue Lock" : p.club;
+}
+
+function clubCharacterPool(p) {
+  const key = clubKeyOf(p);
+  return Object.values(characters).filter(c => c.club === key);
+}
+
+// Removes invalid teammates and returns the names removed.
+function cleanTeam(userId) {
+  const p = getPlayer(userId);
+  const owner = userId === OWNER_ID;
+
+  const pool = new Set(clubCharacterPool(p).map(c => c.name));
+  const active = p.activePlayer ? findCharacter(p.activePlayer, false)?.name : null;
+
+  const seen = new Set();
+  const removed = [];
+
+  p.team = p.team.filter(name => {
+    const c = findCharacter(name, false);
+
+    if (!c) { removed.push(name); return false; }
+    if (seen.has(c.name)) return false;
+
+    if (active && c.name === active) { removed.push(c.name); return false; }
+    if (!owner && !pool.has(c.name)) { removed.push(c.name); return false; }
+
+    seen.add(c.name);
+    return true;
+  });
+
+  return removed;
+}
+
+function getTeamMembers(userId) {
+  cleanTeam(userId);
+
+  return getPlayer(userId).team
+    .map(n => findCharacter(n, false))
+    .filter(Boolean);
+}
+
+function teamAction(userId, sub, input) {
+  const p = getPlayer(userId);
+  const owner = userId === OWNER_ID;
+
+  cleanTeam(userId);
+
+  if (sub === "add") {
+    const c = findCharacter(input);
+
+    if (!c) return { content: "❌ Character not found." };
+
+    if (!owner && !p.players.includes(c.name)) {
+      return { content: "❌ You don't own this character." };
+    }
+
+    if (!owner && c.club !== clubKeyOf(p)) {
+      return {
+        content:
+          `❌ **${c.name}** plays for **${c.club}**, not your club (**${clubKeyOf(p)}**).\n` +
+          `Your team can only use characters from your club.`
+      };
+    }
+
+    const active = p.activePlayer ? findCharacter(p.activePlayer, false)?.name : null;
+
+    if (active === c.name) {
+      return { content: `❌ **${c.name}** is already your active player — a character can't be used twice.` };
+    }
+
+    if (p.team.includes(c.name)) {
+      return { content: `❌ **${c.name}** is already in your team — no duplicates.` };
+    }
+
+    if (p.team.length >= TEAM_MAX) {
+      return { content: `❌ Your team is full (${TEAM_MAX}/${TEAM_MAX}).` };
+    }
+
+    p.team.push(c.name);
+    save();
+
+    return { content: `✅ **${c.name}** joined your team (${p.team.length}/${TEAM_MAX}).` };
+  }
+
+  if (sub === "remove") {
+    const c = findCharacter(input);
+
+    if (!c || !p.team.includes(c.name)) {
+      return { content: "❌ That character isn't in your team." };
+    }
+
+    p.team = p.team.filter(n => n !== c.name);
+    save();
+
+    return { content: `✅ **${c.name}** removed from your team.` };
+  }
+
+  // view
+  const members = getTeamMembers(userId);
+  const active = p.activePlayer ? findCharacter(p.activePlayer, false)?.name : null;
+
+  const available = clubCharacterPool(p)
+    .filter(c => p.players.includes(c.name) && !p.team.includes(c.name) && c.name !== active)
+    .map(c => c.name);
+
+  const bonus = Math.min(12, members.length * 2);
+
+  return {
+    embeds: [
+      new EmbedBuilder()
+        .setTitle(`🤝 Your Team — ${clubKeyOf(p)}`)
+        .setDescription(
+          members.length
+            ? members.map(c => `• **${c.name}** — ${c.rating} OVR (${c.position})`).join("\n")
+            : "No teammates yet. Use `,addteam <character>`."
+        )
+        .addFields(
+          { name: "Slots", value: `${members.length}/${TEAM_MAX}`, inline: true },
+          { name: "Match Bonus", value: `+${bonus}% success`, inline: true },
+          {
+            name: "Available from your club",
+            value: available.length ? available.join(", ").slice(0, 1000) : "None (roll more characters!)"
+          }
+        )
+    ]
+  };
 }
 
 /* =========================
@@ -559,6 +1405,14 @@ const SKILL_TYPE_LABELS = {
   pass: "🧠 Pass — can create an assist",
   dribble: "🌀 Dribble — beats defenders",
   defend: "🛡️ Defend — blocks the next opponent goal"
+};
+
+// Cooldown in match actions after a skill is used.
+const SKILL_COOLDOWN = {
+  shoot: 3,
+  pass: 2,
+  dribble: 2,
+  defend: 3
 };
 
 const SKILL_TYPE_OVERRIDES = {
@@ -604,7 +1458,7 @@ function skillType(name, position) {
 function getFlowSkills(userId) {
   const p = getPlayer(userId);
 
-  const c = p.activePlayer ? findCharacter(p.activePlayer) : null;
+  const c = p.activePlayer ? findCharacter(p.activePlayer, false) : null;
 
   let names = [];
   let position = p.position;
@@ -627,12 +1481,60 @@ function getFlowSkills(userId) {
   return list.slice(0, 25);
 }
 
+function cooldownLeft(m, skillName) {
+  return m.cooldowns[skillName] || 0;
+}
+
+// Called after every player action.
+function tickCooldowns(m) {
+  for (const k of Object.keys(m.cooldowns)) {
+    m.cooldowns[k]--;
+    if (m.cooldowns[k] <= 0) delete m.cooldowns[k];
+  }
+}
+
+/*
+  How many times you can enter Flow State in one match.
+  Depends on your player: stronger players and players who are
+  playing well get more Flow States.
+*/
+function maxFlowUses(m) {
+  let n = 1;
+
+  if (m.rating >= 90) n++;
+  if (m.rating >= 97) n++;
+
+  const current = calculateRating(m.stats, "draw", m.position);
+  if (current >= 8.5) n++;
+
+  return Math.min(4, n);
+}
+
+// Can this player start (or reopen) Flow State right now?
+function flowReady(userId, m) {
+  if (userId === OWNER_ID) return true;
+  if (m.flowActive) return true;
+
+  return (m.bestMoment || m.worstMoment) && m.flowUses < maxFlowUses(m);
+}
+
 function skillMenu(userId) {
-  const options = getFlowSkills(userId).map(s => ({
-    label: s.name.slice(0, 100),
-    value: s.name.slice(0, 100),
-    description: SKILL_TYPE_LABELS[s.type].slice(0, 100)
-  }));
+  const m = matches.get(userId);
+  const owner = userId === OWNER_ID;
+
+  const options = getFlowSkills(userId).map(sk => {
+    const cd = owner ? 0 : cooldownLeft(m, sk.name);
+
+    return {
+      label: ((cd ? "⏳ " : "") + sk.name).slice(0, 100),
+      value: sk.name.slice(0, 100),
+      description: (
+        cd
+          ? `⏳ Cooldown: ${cd} more action${cd > 1 ? "s" : ""}`
+          : SKILL_TYPE_LABELS[sk.type]
+      ).slice(0, 100)
+    };
+  });
 
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
@@ -643,16 +1545,19 @@ function skillMenu(userId) {
 }
 
 function skillMenuText(m, userId) {
+  const owner = userId === OWNER_ID;
+
   return (
     `🔥 **FLOW STATE**\n` +
     `Choose a skill below. Only you can see this.\n` +
-    `⚡ Actions left: **${userId === OWNER_ID ? "∞" : m.flowLeft}**`
+    `⚡ Actions left: **${owner ? "∞" : m.flowLeft}**\n` +
+    `🔁 Flow States used: **${owner ? "∞" : `${m.flowUses}/${maxFlowUses(m)}`}**`
   );
 }
 
 // Does the skill work? Returns the text to show.
 function performSkill(m, p, owner, skill) {
-  const chance = Math.min(0.95, m.rating / 120 + 0.3);
+  const chance = Math.min(0.95, m.rating / 120 + 0.3 + m.teamBonus);
   const success = owner || Math.random() < chance;
   const title = `✨ **${skill.name}**\n`;
 
@@ -719,8 +1624,11 @@ function performSkill(m, p, owner, skill) {
 function createMatch(userId) {
   const p = getPlayer(userId);
   const character = p.activePlayer
-    ? findCharacter(p.activePlayer)
+    ? findCharacter(p.activePlayer, false)
     : null;
+
+  const team = getTeamMembers(userId);
+  const defenders = team.filter(c => c.position === "CB" || c.position === "GK").length;
 
   const match = {
     userId,
@@ -735,10 +1643,15 @@ function createMatch(userId) {
     worstMoment: false,
     flowActive: false,
     flowLeft: 0,
-    flowUsed: false,
+    flowUses: 0,
+    cooldowns: {},
     shield: false,
     finished: false,
     message: null,
+
+    teamSize: team.length,
+    teamBonus: Math.min(0.12, team.length * 0.02),
+    defenders,
 
     stats: {
       goals: 0,
@@ -827,20 +1740,43 @@ function matchEmbed(userId) {
     chanceText = "⏳ **No chance right now** — press **Continue**";
   }
 
-  const flowAllowed =
-    owner ||
-    m.flowActive ||
-    m.bestMoment ||
-    m.worstMoment;
-
   let flowText;
 
   if (m.flowActive) {
     flowText = `🔥 **FLOW STATE** (${owner ? "∞" : m.flowLeft} left)`;
   } else if (p.activeFlow) {
-    flowText = `${p.activeFlow}${flowAllowed ? " 🟢" : " 🔒"}`;
+    flowText =
+      `${p.activeFlow} ${flowReady(userId, m) ? "🟢" : "🔒"}` +
+      (owner ? "" : ` (${m.flowUses}/${maxFlowUses(m)} used)`);
   } else {
     flowText = owner ? "👑 Owner" : "None";
+  }
+
+  const fields = [
+    { name: "Goals", value: `${m.stats.goals}`, inline: true },
+    { name: "Assists", value: `${m.stats.assists}`, inline: true },
+    { name: "Dribbles", value: `${m.stats.dribbles}`, inline: true },
+    { name: "Key Passes", value: `${m.stats.keyPasses}`, inline: true },
+    { name: "Best Moment", value: m.bestMoment ? "🔥 ACTIVE" : "—", inline: true },
+    { name: "Worst Moment", value: m.worstMoment ? "💀 ACTIVE" : "—", inline: true },
+    { name: "Flow", value: flowText, inline: true }
+  ];
+
+  if (m.teamSize) {
+    fields.push({
+      name: "🤝 Team",
+      value: `${m.teamSize} teammate${m.teamSize > 1 ? "s" : ""} (+${Math.round(m.teamBonus * 100)}%)`,
+      inline: true
+    });
+  }
+
+  const cds = Object.entries(m.cooldowns);
+
+  if (cds.length && !owner) {
+    fields.push({
+      name: "⏳ Skill Cooldowns",
+      value: cds.map(([n, v]) => `${n} (${v})`).join(", ").slice(0, 1000)
+    });
   }
 
   return new EmbedBuilder()
@@ -852,15 +1788,7 @@ function matchEmbed(userId) {
       `⭐ Match Rating: **${rating}**\n\n` +
       `${chanceText}`
     )
-    .addFields(
-      { name: "Goals", value: `${m.stats.goals}`, inline: true },
-      { name: "Assists", value: `${m.stats.assists}`, inline: true },
-      { name: "Dribbles", value: `${m.stats.dribbles}`, inline: true },
-      { name: "Key Passes", value: `${m.stats.keyPasses}`, inline: true },
-      { name: "Best Moment", value: m.bestMoment ? "🔥 ACTIVE" : "—", inline: true },
-      { name: "Worst Moment", value: m.worstMoment ? "💀 ACTIVE" : "—", inline: true },
-      { name: "Flow", value: flowText, inline: true }
-    );
+    .addFields(fields);
 }
 
 
@@ -873,12 +1801,6 @@ function matchButtons(userId) {
   const p = getPlayer(userId);
 
   const owner = userId === OWNER_ID;
-
-  const flowAllowed =
-    owner ||
-    m.flowActive ||
-    m.bestMoment ||
-    m.worstMoment;
 
   const chance = owner || m.hasChance;
 
@@ -910,7 +1832,7 @@ function matchButtons(userId) {
         .setDisabled(
           !chance ||
           (!owner && !p.activeFlow) ||
-          !flowAllowed
+          !flowReady(userId, m)
         ),
 
       // Moves the match forward when you have no chance.
@@ -955,16 +1877,19 @@ function advanceMatch(m) {
 
   /*
     Normal players don't always get a chance.
-    Roughly 35% chance when the next event happens.
+    Teammates make chances a bit more likely.
   */
 
-  m.hasChance = Math.random() < 0.35;
+  m.hasChance = Math.random() < 0.35 + m.teamBonus;
 
   /*
-    Random opponent goal (a defend skill can block one).
+    Random opponent goal. Defenders in your team and
+    defend skills reduce / block it.
   */
 
-  if (Math.random() < 0.12) {
+  const oppChance = Math.max(0.04, 0.12 - m.defenders * 0.015);
+
+  if (Math.random() < oppChance) {
     if (m.shield) {
       m.shield = false;
     } else {
@@ -1016,6 +1941,10 @@ function finishMatch(userId) {
     p.coins += 2000;
   }
 
+  // Club wage
+  const wage = p.contract?.wage || 0;
+  if (wage) p.coins += wage;
+
   if (finalRating > p.stats.bestRating) {
     p.stats.bestRating = finalRating;
   }
@@ -1027,9 +1956,48 @@ function finishMatch(userId) {
     addXP(p, 30);
   }
 
+  const seasonSummary = recordSeason(userId, m, finalRating, result);
+  const offer = makeOffer(userId, finalRating, m.rating);
+
   save();
 
   matches.delete(userId);
+
+  const fields = [
+    { name: "⚽ Goals", value: `${m.stats.goals}`, inline: true },
+    { name: "🎯 Assists", value: `${m.stats.assists}`, inline: true },
+    { name: "🔥 Dribbles", value: `${m.stats.dribbles}`, inline: true },
+    { name: "🧠 Key Passes", value: `${m.stats.keyPasses}`, inline: true },
+    { name: "📈 Best Rating", value: `${p.stats.bestRating}`, inline: true }
+  ];
+
+  if (wage) {
+    fields.push({ name: "💼 Wage", value: `+${wage.toLocaleString()} coins`, inline: true });
+  }
+
+  if (offer) {
+    fields.push({
+      name: "📩 Club Interest",
+      value:
+        `**${offer.club}** (${offer.league}) wants to sign you!\n` +
+        `Use \`,offers\` or \`/offers\` to accept or deny.`
+    });
+  }
+
+  if (seasonSummary) {
+    fields.push({
+      name: `🏆 Season ${seasonSummary.number} complete!`,
+      value: seasonSummary.won.length
+        ? seasonSummary.won.map(t => `• ${t}`).join("\n").slice(0, 1000)
+        : "No trophies this season."
+    });
+  } else {
+    fields.push({
+      name: "📅 Season",
+      value: `${p.season.matches}/${SEASON_MATCHES} matches`,
+      inline: true
+    });
+  }
 
   return new EmbedBuilder()
     .setTitle("🏁 MATCH FINISHED")
@@ -1039,13 +2007,7 @@ function finishMatch(userId) {
       `⭐ Final Rating: **${finalRating}**\n` +
       `🏆 Result: **${result.toUpperCase()}**`
     )
-    .addFields(
-      { name: "⚽ Goals", value: `${m.stats.goals}`, inline: true },
-      { name: "🎯 Assists", value: `${m.stats.assists}`, inline: true },
-      { name: "🔥 Dribbles", value: `${m.stats.dribbles}`, inline: true },
-      { name: "🧠 Key Passes", value: `${m.stats.keyPasses}`, inline: true },
-      { name: "📈 Best Rating", value: `${p.stats.bestRating}`, inline: true }
-    );
+    .addFields(fields);
 }
 
 
@@ -1060,8 +2022,8 @@ async function processAction(interaction, action) {
 
   if (!m || m.finished) {
     return interaction.reply({
-      content: "❌ You don't have an active match.",
-      ephemeral: true
+      content: "❌ You don't have an active match (it may have ended or the bot restarted). Start a new one with `,match`.",
+      flags: 64
     });
   }
 
@@ -1076,8 +2038,7 @@ async function processAction(interaction, action) {
     OWNER IS IMMUNE:
     - Always has a chance
     - Actions always succeed
-    - No negative events
-    - Flow anytime, unlimited
+    - Flow anytime, unlimited, no cooldowns
   */
 
 
@@ -1090,7 +2051,7 @@ async function processAction(interaction, action) {
     if (owner || m.hasChance) {
       return interaction.reply({
         content: "⚡ You already have a chance!",
-        ephemeral: true
+        flags: 64
       });
     }
 
@@ -1116,7 +2077,7 @@ async function processAction(interaction, action) {
       content:
         `⏳ You don't have a chance at **${m.minute}'**.\n` +
         `Press **Continue** to wait for another match event.`,
-      ephemeral: true
+      flags: 64
     });
   }
 
@@ -1127,24 +2088,10 @@ async function processAction(interaction, action) {
 
   if (action === "flow") {
 
-    const flowAllowed =
-      owner ||
-      m.flowActive ||
-      m.bestMoment ||
-      m.worstMoment;
-
-    if (!flowAllowed) {
-      return interaction.reply({
-        content:
-          "🔒 Flow can only activate during your **Best Moment** or **Worst Moment**.",
-        ephemeral: true
-      });
-    }
-
     if (!owner && !p.activeFlow) {
       return interaction.reply({
         content: "❌ You don't have an active Flow. Use `,setflow <flow>`.",
-        ephemeral: true
+        flags: 64
       });
     }
 
@@ -1152,7 +2099,7 @@ async function processAction(interaction, action) {
       return interaction.reply({
         content:
           "❌ You don't have any skills yet. Get a character with `,roll` and select it with `,setplayer <name>`.",
-        ephemeral: true
+        flags: 64
       });
     }
 
@@ -1161,22 +2108,40 @@ async function processAction(interaction, action) {
       return interaction.reply({
         content: skillMenuText(m, userId),
         components: [skillMenu(userId)],
-        ephemeral: true
+        flags: 64
       });
     }
 
-    if (!owner && m.flowUsed) {
+    if (!owner && !(m.bestMoment || m.worstMoment)) {
       return interaction.reply({
-        content: "⏳ You've already used Flow this match.",
-        ephemeral: true
+        content:
+          "🔒 Flow can only activate during your **Best Moment** or **Worst Moment**.",
+        flags: 64
+      });
+    }
+
+    if (!owner && m.flowUses >= maxFlowUses(m)) {
+      return interaction.reply({
+        content:
+          `⏳ You've used all your Flow States this match (**${m.flowUses}/${maxFlowUses(m)}**).\n` +
+          `Higher rating and a great performance unlock more.`,
+        flags: 64
       });
     }
 
     // Start Flow State.
-    m.flowUsed = true;
     m.flowActive = true;
     m.flowLeft = owner ? Infinity : 3;
-    p.flowCooldown = owner ? 0 : 180;
+
+    if (!owner) {
+      m.flowUses++;
+
+      // The moment is "spent" - you need a new one for the next Flow State.
+      m.bestMoment = false;
+      m.worstMoment = false;
+
+      p.flowCooldown = 180;
+    }
 
     await interaction.update({
       embeds: [matchEmbed(userId)],
@@ -1186,7 +2151,7 @@ async function processAction(interaction, action) {
     return interaction.followUp({
       content: skillMenuText(m, userId),
       components: [skillMenu(userId)],
-      ephemeral: true
+      flags: 64
     });
   }
 
@@ -1202,7 +2167,7 @@ async function processAction(interaction, action) {
   } else {
 
     let chance =
-      m.rating / 120;
+      m.rating / 120 + m.teamBonus;
 
     /*
       Flow State gives a boost.
@@ -1305,11 +2270,15 @@ async function processAction(interaction, action) {
   }
 
 
-  // Every action uses up one Flow State action.
-  if (m.flowActive && !owner) {
-    m.flowLeft--;
+  // Every action uses up one Flow State action and ticks cooldowns.
+  if (!owner) {
+    tickCooldowns(m);
 
-    if (m.flowLeft <= 0) m.flowActive = false;
+    if (m.flowActive) {
+      m.flowLeft--;
+
+      if (m.flowLeft <= 0) m.flowActive = false;
+    }
   }
 
 
@@ -1350,7 +2319,7 @@ async function processSkill(interaction) {
   if (interaction.user.id !== userId) {
     return interaction.reply({
       content: "❌ This isn't your menu.",
-      ephemeral: true
+      flags: 64
     });
   }
 
@@ -1382,7 +2351,7 @@ async function processSkill(interaction) {
   }
 
   const skill = getFlowSkills(userId).find(
-    s => s.name === interaction.values[0]
+    sk => sk.name === interaction.values[0]
   );
 
   if (!skill) {
@@ -1392,10 +2361,26 @@ async function processSkill(interaction) {
     });
   }
 
+  // Skill cooldown (owner has none).
+  const cd = owner ? 0 : cooldownLeft(m, skill.name);
+
+  if (cd > 0) {
+    return interaction.update({
+      content:
+        `⏳ **${skill.name}** is on cooldown for **${cd}** more action${cd > 1 ? "s" : ""}. Pick another skill.\n\n` +
+        skillMenuText(m, userId),
+      components: [skillMenu(userId)]
+    });
+  }
+
   const resultText = performSkill(m, p, owner, skill);
 
-  // Using a skill uses up one Flow State action.
   if (!owner) {
+    // Existing cooldowns tick down, then this skill goes on cooldown.
+    tickCooldowns(m);
+    m.cooldowns[skill.name] = SKILL_COOLDOWN[skill.type];
+
+    // Using a skill uses up one Flow State action.
     m.flowLeft--;
 
     if (m.flowLeft <= 0) m.flowActive = false;
@@ -1488,7 +2473,9 @@ async function ownerCommand(message, args) {
       "`,setlevel @user <level>`\n" +
       "`,setclub @user <club>`\n" +
       "`,setcountry @user <country>`\n" +
-      "`,resetplayer @user`"
+      "`,resetplayer @user`\n" +
+      "`,givetrophy @user <trophy>`\n" +
+      "`,giveoffer @user <club>`"
     );
   }
 
@@ -1516,7 +2503,9 @@ async function ownerCommand(message, args) {
       "setlevel",
       "setclub",
       "setcountry",
-      "resetplayer"
+      "resetplayer",
+      "givetrophy",
+      "giveoffer"
     ].includes(command) &&
     !target
   ) {
@@ -1608,11 +2597,53 @@ async function ownerCommand(message, args) {
   }
 
   if (command === "setclub") {
-    getPlayer(target.id).club = args.join(" ") || "Free Agent";
+    const input = args.join(" ");
+    const tp = getPlayer(target.id);
 
+    if (!input) {
+      tp.club = "Free Agent";
+      tp.league = "—";
+      cleanTeam(target.id);
+      save();
+      return message.reply("🏟️ Club set to **Free Agent**.");
+    }
+
+    const club = findClub(input);
+
+    if (club) {
+      applyClub(target.id, club.name);
+      save();
+      return message.reply(`🏟️ Club set to **${club.name}** (${club.league}).`);
+    }
+
+    tp.club = input;
+    tp.league = "—";
+    cleanTeam(target.id);
     save();
 
-    return message.reply(`🏟️ Club set.`);
+    return message.reply(`🏟️ Club set to **${input}**.`);
+  }
+
+  if (command === "givetrophy") {
+    const t = findTrophy(args.join(" "));
+
+    if (!t) return message.reply("❌ Trophy not found. Use `,trophies list` to see them all.");
+
+    const tp = getPlayer(target.id);
+    tp.trophies.push({ name: t.name, season: tp.season.number, club: tp.club });
+    save();
+
+    return message.reply(`🏆 Gave **${t.name}** to ${target}.`);
+  }
+
+  if (command === "giveoffer") {
+    const club = findClub(args.join(" "));
+
+    if (!club) return message.reply("❌ Club not found. Use `,clubs` to see them.");
+
+    const offer = addOffer(target.id, club);
+
+    return message.reply(`📩 Sent an offer from **${offer.club}** to ${target}.`);
   }
 
   if (command === "setcountry") {
@@ -1655,7 +2686,9 @@ async function handleCommand(message) {
       "setlevel",
       "setclub",
       "setcountry",
-      "resetplayer"
+      "resetplayer",
+      "givetrophy",
+      "giveoffer"
     ].includes(command)
   ) {
     return ownerCommand(message, [
@@ -1681,7 +2714,12 @@ async function handleCommand(message) {
             { name: "Club", value: p.club, inline: true },
             { name: "Country", value: p.country, inline: true },
             { name: "Character", value: c?.name || "None", inline: true },
-            { name: "Flow", value: p.activeFlow || "None", inline: true }
+            { name: "Flow", value: p.activeFlow || "None", inline: true },
+            { name: "League", value: p.league || "—", inline: true },
+            { name: "Season", value: `${p.season.number} (${p.season.matches}/${SEASON_MATCHES})`, inline: true },
+            { name: "Trophies", value: `${p.trophies.length}`, inline: true },
+            { name: "Team", value: `${p.team.length}/${TEAM_MAX}`, inline: true },
+            { name: "Offers", value: `${p.offers.length}`, inline: true }
           )
       ]
     });
@@ -1706,13 +2744,20 @@ async function handleCommand(message) {
       return message.reply("❌ You don't own this character.");
     }
 
+    const wasTeammate = p.team.includes(c.name);
+
     p.activePlayer = c.name;
     p.rating = c.rating;
     p.position = c.position;
 
+    cleanTeam(message.author.id);
+
     save();
 
-    return message.reply(`✅ Active player: **${c.name}**`);
+    return message.reply(
+      `✅ Active player: **${c.name}**` +
+      (wasTeammate ? "\n🔄 Removed from your team (a character can't be used twice)." : "")
+    );
   }
 
   if (command === "unlockflow") {
@@ -1850,6 +2895,67 @@ async function handleCommand(message) {
     );
   }
 
+  if (command === "offers" || command === "offer") {
+    return message.reply(offerView(message.author.id));
+  }
+
+  if (command === "trophies" || command === "trophy") {
+    if (["list", "all"].includes(args[0]?.toLowerCase())) {
+      return message.reply({ embeds: [trophyCatalogEmbed()] });
+    }
+
+    return message.reply({ embeds: [trophyEmbed(message.author.id)] });
+  }
+
+  if (command === "season") {
+    return message.reply({ embeds: [seasonEmbed(message.author.id)] });
+  }
+
+  if (command === "team") {
+    return message.reply(teamAction(message.author.id, "view"));
+  }
+
+  if (command === "addteam") {
+    return message.reply(teamAction(message.author.id, "add", args.join(" ")));
+  }
+
+  if (command === "removeteam") {
+    return message.reply(teamAction(message.author.id, "remove", args.join(" ")));
+  }
+
+  if (command === "clubs") {
+    if (args.length) {
+      const leagueName = findLeague(args.join(" "));
+
+      if (!leagueName) return message.reply("❌ League not found.");
+
+      return message.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle(`🏟️ ${leagueName}`)
+            .setDescription(
+              CLUB_LIST.filter(c => c.league === leagueName)
+                .map(c => `• **${c.name}** (Tier ${c.tier})`)
+                .join("\n")
+            )
+        ]
+      });
+    }
+
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle(`🌍 Leagues (${Object.keys(LEAGUES).length})`)
+          .setDescription(
+            Object.keys(LEAGUES)
+              .map(l => `• **${l}** — ${CLUB_LIST.filter(c => c.league === l).length} clubs`)
+              .join("\n") +
+            "\n\nUse `,clubs <league>` to see its clubs."
+          )
+      ]
+    });
+  }
+
   if (command === "help") {
     return message.reply(
       "**⚽ BLUE LOCK BOT**\n\n" +
@@ -1865,7 +2971,12 @@ async function handleCommand(message) {
       "`,match` — Start match\n" +
       "`,train` — Train\n" +
       "`,rest` — Restore stamina\n" +
-      "`,stats` — Career statistics"
+      "`,stats` — Career statistics\n" +
+      "`,offers` — Club offers (accept / deny)\n" +
+      "`,trophies` — Your trophies (`,trophies list` = all)\n" +
+      "`,season` — Season progress\n" +
+      "`,team` / `,addteam <name>` / `,removeteam <name>` — Your team\n" +
+      "`,clubs [league]` — Leagues and clubs"
     );
   }
 }
@@ -1880,46 +2991,53 @@ client.on("interactionCreate", async interaction => {
 
   try {
 
-    const parts =
-      interaction.customId.split("_");
-
+    const parts = interaction.customId.split("_");
     const type = parts[0];
-    const action = parts[1];
-    const userId = parts[2];
 
-    if (type !== "match") return;
+    // Match buttons: match_<action>_<userId>
+    if (type === "match") {
+      const action = parts[1];
+      const userId = parts[2];
 
-    if (interaction.user.id !== userId) {
+      if (interaction.user.id !== userId) {
+        return await interaction.reply({
+          content: "❌ This isn't your match.",
+          flags: 64
+        });
+      }
 
-      return interaction.reply({
-        content: "❌ This isn't your match.",
-        ephemeral: true
-      });
+      return await processAction(interaction, action);
     }
 
-    await processAction(
-      interaction,
-      action
-    );
+    // Offer buttons: offer_<accept|deny>_<userId>_<offerId>
+    if (type === "offer") {
+      const action = parts[1];
+      const userId = parts[2];
+      const offerId = parts[3];
+
+      if (interaction.user.id !== userId) {
+        return await interaction.reply({
+          content: "❌ These aren't your offers.",
+          flags: 64
+        });
+      }
+
+      return await processOffer(interaction, action, userId, offerId);
+    }
+
+    // Anything else (old / unknown buttons) still gets an answer.
+    return await interaction.reply({
+      content: "⌛ This button has expired.",
+      flags: 64
+    });
 
   } catch (error) {
 
-    console.error(
-      "MATCH BUTTON ERROR:",
-      error
-    );
+    console.error("BUTTON ERROR:", error);
 
-    if (
-      !interaction.replied &&
-      !interaction.deferred
-    ) {
-
-      await interaction.reply({
-        content:
-          "❌ Match system error.",
-        ephemeral: true
-      }).catch(() => {});
-    }
+    await safeRespond(interaction, {
+      content: "❌ Something went wrong. Please try again."
+    });
   }
 });
 
@@ -1930,23 +3048,25 @@ client.on("interactionCreate", async interaction => {
 client.on("interactionCreate", async interaction => {
 
   if (!interaction.isStringSelectMenu()) return;
-  if (!interaction.customId.startsWith("flowskill_")) return;
 
   try {
+
+    if (!interaction.customId.startsWith("flowskill_")) {
+      return await interaction.reply({
+        content: "⌛ This menu has expired.",
+        flags: 64
+      });
+    }
+
     await processSkill(interaction);
+
   } catch (error) {
 
     console.error("SKILL MENU ERROR:", error);
 
-    if (
-      !interaction.replied &&
-      !interaction.deferred
-    ) {
-      await interaction.reply({
-        content: "❌ Skill error.",
-        ephemeral: true
-      }).catch(() => {});
-    }
+    await safeRespond(interaction, {
+      content: "❌ Skill error. Press Flow again."
+    });
   }
 });
 
@@ -2035,6 +3155,39 @@ const slashCommands = [
       o.setName("flow")
         .setDescription("Flow name")
         .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("offers")
+    .setDescription("View your club offers (accept or deny)"),
+
+  new SlashCommandBuilder()
+    .setName("trophies")
+    .setDescription("View your trophy cabinet"),
+
+  new SlashCommandBuilder()
+    .setName("season")
+    .setDescription("View your season progress"),
+
+  new SlashCommandBuilder()
+    .setName("team")
+    .setDescription("Manage your team")
+    .addSubcommand(sc =>
+      sc.setName("view").setDescription("View your team")
+    )
+    .addSubcommand(sc =>
+      sc.setName("add")
+        .setDescription("Add a character from your club to your team")
+        .addStringOption(o =>
+          o.setName("name").setDescription("Character name").setRequired(true)
+        )
+    )
+    .addSubcommand(sc =>
+      sc.setName("remove")
+        .setDescription("Remove a character from your team")
+        .addStringOption(o =>
+          o.setName("name").setDescription("Character name").setRequired(true)
+        )
     )
 ].map(x => x.toJSON());
 
@@ -2187,15 +3340,35 @@ client.on("interactionCreate", async interaction => {
       );
     }
 
+    if (interaction.commandName === "offers") {
+      return interaction.reply(offerView(interaction.user.id));
+    }
+
+    if (interaction.commandName === "trophies") {
+      return interaction.reply({ embeds: [trophyEmbed(interaction.user.id)] });
+    }
+
+    if (interaction.commandName === "season") {
+      return interaction.reply({ embeds: [seasonEmbed(interaction.user.id)] });
+    }
+
+    if (interaction.commandName === "team") {
+      const sub = interaction.options.getSubcommand();
+      const name = interaction.options.getString("name");
+
+      return interaction.reply(teamAction(interaction.user.id, sub, name));
+    }
+
+    // Unknown / outdated command: always answer so Discord never shows "failed".
+    return interaction.reply({
+      content: "❌ That command isn't available. Try again in a minute or use the `,` version.",
+      flags: 64
+    });
+
   } catch (err) {
     console.error("Slash error:", err);
 
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        content: "❌ Something went wrong.",
-        ephemeral: true
-      }).catch(() => {});
-    }
+    await safeRespond(interaction, { content: "❌ Something went wrong." });
   }
 });
 
